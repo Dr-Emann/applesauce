@@ -1,6 +1,5 @@
 mod decmpfs;
 pub mod resource_fork;
-mod spooled;
 
 use flate2::write::ZlibEncoder;
 use libc::c_char;
@@ -16,7 +15,6 @@ use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::{fs, io, mem, ptr};
-use tracing::metadata;
 
 macro_rules! cstr {
     ($s:literal) => {{
@@ -25,9 +23,8 @@ macro_rules! cstr {
     }};
 }
 
-use crate::decmpfs::{CompressionType, DiskHeader, Storage};
+use crate::decmpfs::{CompressionType, Storage};
 use crate::resource_fork::ResourceFork;
-use crate::spooled::SpooledFile;
 pub(crate) use cstr;
 
 const BLOCK_SIZE: usize = 0x10000;
@@ -287,7 +284,7 @@ pub fn compress(path: &Path, metadata: &Metadata) -> io::Result<()> {
     drop(compressed_data);
 
     let mut decomp_xattr_val = Vec::with_capacity(decmpfs::DiskHeader::SIZE);
-    let header = DiskHeader {
+    let header = decmpfs::DiskHeader {
         compression_type: CompressionType {
             compression: Compression::ZLIB,
             storage: Storage::ResourceFork,
