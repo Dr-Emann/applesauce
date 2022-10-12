@@ -1,0 +1,19 @@
+[package]
+name = "squashed_apple"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+
+[features]
+# TODO: use namespaced features
+zlib = ["flate2"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+flate2 = { version = "1.0", optional = true }
+libc = "0.2.127"
+memchr = "2.5"
+tracing = "0.1.36"
+walkdir = "2.3"
