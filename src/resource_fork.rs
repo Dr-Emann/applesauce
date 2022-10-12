@@ -69,7 +69,7 @@ impl Seek for ResourceFork<'_> {
                 // fd is valid
                 // xattr name is valid, and null terminated
                 // value == NULL && size == 0 is allowed, to just return the length of the value
-                let rc = unsafe {
+                let mut rc = unsafe {
                     libc::fgetxattr(
                         self.file.as_raw_fd(),
                         XATTR_NAME.as_ptr(),
@@ -80,7 +80,12 @@ impl Seek for ResourceFork<'_> {
                     )
                 };
                 if rc < 0 {
-                    return Err(io::Error::last_os_error());
+                    let e = io::Error::last_os_error();
+                    if e.raw_os_error() == Some(libc::ENOATTR) {
+                        rc = 0;
+                    } else {
+                        return Err(e);
+                    }
                 }
                 let end: u64 = rc.try_into().unwrap();
                 let offset = checked_add_signed(end, i).ok_or(io::ErrorKind::InvalidInput)?;
@@ -94,5 +99,42 @@ impl Seek for ResourceFork<'_> {
         };
         self.offset = new_offset;
         Ok(new_offset.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::has_xattr;
+    use std::ffi::CString;
+    use std::fs;
+    use std::io::Write;
+    use std::os::unix::ffi::OsStrExt;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn no_create_without_write() {
+        let file = NamedTempFile::new().unwrap();
+        let mut rfork = ResourceFork::new(file.as_file());
+        let path = CString::new(file.path().as_os_str().as_bytes()).unwrap();
+        assert!(!has_xattr(&path, XATTR_NAME).unwrap());
+        assert_eq!(rfork.seek(SeekFrom::Start(10)).unwrap(), 10);
+        assert!(!has_xattr(&path, XATTR_NAME).unwrap());
+        assert_eq!(rfork.seek(SeekFrom::Current(1)).unwrap(), 11);
+        assert!(!has_xattr(&path, XATTR_NAME).unwrap());
+        assert_eq!(rfork.seek(SeekFrom::End(0)).unwrap(), 0);
+        assert!(!has_xattr(&path, XATTR_NAME).unwrap());
+    }
+
+    #[test]
+    fn create_by_write() {
+        let file = NamedTempFile::new().unwrap();
+        let mut rfork = ResourceFork::new(file.as_file());
+        let path = CString::new(file.path().as_os_str().as_bytes()).unwrap();
+        let _ = rfork.write(b"hi there").unwrap();
+        rfork.flush().unwrap();
+        assert!(has_xattr(&path, XATTR_NAME).unwrap());
+        let content = fs::read(file.path().join("..namedfork/rsrc")).unwrap();
+        assert_eq!(content, b"hi there");
     }
 }

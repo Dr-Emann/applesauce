@@ -17,3 +17,6 @@ libc = "0.2.127"
 memchr = "2.5"
 tracing = "0.1.36"
 walkdir = "2.3"
+
+[dev-dependencies]
+tempfile = "3.3.0"
