@@ -19,6 +19,7 @@ use std::{fs, io, mem, ptr};
 macro_rules! cstr {
     ($s:literal) => {{
         // TODO: Check for nulls
+        // SAFETY: definitely null terminated, at worst terminated early
         unsafe { CStr::from_bytes_with_nul_unchecked(concat!($s, "\0").as_bytes()) }
     }};
 }
@@ -31,6 +32,9 @@ const BLOCK_SIZE: usize = 0x10000;
 const MAX_COMPRESSION_SIZE: u64 = (1 << 31) - 1;
 
 const fn c_char_bytes(chars: &[c_char]) -> &[u8] {
+    assert!(mem::size_of::<c_char>() == mem::size_of::<u8>());
+    assert!(mem::align_of::<c_char>() == mem::align_of::<u8>());
+    // SAFETY: c_char is the same layout as u8
     unsafe { mem::transmute(chars) }
 }
 
@@ -66,10 +70,12 @@ pub fn check_compressable(path: &Path, metadata: &Metadata) -> io::Result<()> {
     let path = CString::new(path.as_os_str().as_bytes())?;
 
     let mut statfs_buf = MaybeUninit::<libc::statfs>::uninit();
+    // SAFETY: path is a valid pointer, and null terminated, statfs_buf is a valid ptr, and is used as an out ptr
     let rc = unsafe { libc::statfs(path.as_ptr(), statfs_buf.as_mut_ptr()) };
     if rc != 0 {
         return Err(io::Error::last_os_error());
     }
+    // SAFETY: if statfs returned non-zero, we returned already, it should have filled in statfs_buf
     let statfs_buf = unsafe { statfs_buf.assume_init_ref() };
 
     // TODO: let is_apfs = statfs_buf.f_fstypename.starts_with(APFS_CHARS);
@@ -101,22 +107,28 @@ pub fn check_compressable(path: &Path, metadata: &Metadata) -> io::Result<()> {
 }
 
 fn vol_supports_compression_cap(mnt_root: &CStr) -> io::Result<bool> {
-    let mut attrs = unsafe { MaybeUninit::<libc::attrlist>::zeroed().assume_init() };
-    attrs.bitmapcount = libc::ATTR_BIT_MAP_COUNT;
-    attrs.volattr = libc::ATTR_VOL_CAPABILITIES;
-
     #[repr(C)]
     struct VolAttrs {
         length: u32,
         vol_attrs: libc::vol_capabilities_attr_t,
     }
+
+    // SAFETY: All fields are simple integers which can be zero-initialized
+    let mut attrs = unsafe { MaybeUninit::<libc::attrlist>::zeroed().assume_init() };
+    attrs.bitmapcount = libc::ATTR_BIT_MAP_COUNT;
+    attrs.volattr = libc::ATTR_VOL_CAPABILITIES;
+
     let mut vol_attrs = MaybeUninit::<VolAttrs>::uninit();
+    // SAFETY:
+    // `mnt_root` is a valid pointer, and is null terminated
+    // attrs is a valid pointer to initialized memory of the correct type
+    // vol_attrs is a valid pointer, and its size is passed as the size of the buffer
     let rc = unsafe {
         libc::getattrlist(
             mnt_root.as_ptr(),
             ptr::addr_of_mut!(attrs).cast(),
             vol_attrs.as_mut_ptr().cast(),
-            mem::size_of::<VolAttrs>(),
+            mem::size_of_val(&vol_attrs),
             0,
         )
     };
@@ -138,6 +150,9 @@ fn vol_supports_compression_cap(mnt_root: &CStr) -> io::Result<bool> {
 }
 
 fn has_xattr(path: &CStr, xattr_name: &CStr) -> io::Result<bool> {
+    // SAFETY:
+    // path/xattr_name are valid pointers and are null terminated
+    // value == NULL, size === 0 is allowed to just return the size
     let rc = unsafe {
         libc::getxattr(
             path.as_ptr(),
@@ -208,8 +223,8 @@ impl ForceWritableFile {
         let file = match File::options().read(true).write(true).open(path) {
             Ok(file) => file,
             Err(e) => {
-                if let Some(permisions) = reset_permissions {
-                    let _ = fs::set_permissions(path, permisions);
+                if let Some(permissions) = reset_permissions {
+                    let _ = fs::set_permissions(path, permissions);
                 }
                 return Err(e);
             }
@@ -293,6 +308,10 @@ pub fn compress(path: &Path, metadata: &Metadata) -> io::Result<()> {
         uncompressed_size: file_size,
     };
     header.write_into(&mut decomp_xattr_val)?;
+    // SAFETY:
+    // fd is valid
+    // xattr name is valid and null terminated
+    // value is valid, writable, and initialized up to `.len()` bytes
     let rc = unsafe {
         libc::fsetxattr(
             file.as_raw_fd(),
@@ -308,14 +327,15 @@ pub fn compress(path: &Path, metadata: &Metadata) -> io::Result<()> {
     }
     file.set_len(0)?;
 
+    // SAFETY: fd is valid
     let rc = unsafe { libc::fchflags(file.as_raw_fd(), metadata.st_flags() | libc::UF_COMPRESSED) };
     if rc < 0 {
         let e = io::Error::last_os_error();
-        // TODO:
+        // TODO: Roll back better
         return Err(e);
     }
 
-    let times = [
+    let times: [libc::timespec; 2] = [
         libc::timespec {
             tv_sec: metadata.atime(),
             tv_nsec: metadata.atime_nsec(),
@@ -325,6 +345,7 @@ pub fn compress(path: &Path, metadata: &Metadata) -> io::Result<()> {
             tv_nsec: metadata.mtime_nsec(),
         },
     ];
+    // SAFETY: fd is valid, times points to an array of 2 timespec values
     unsafe {
         libc::futimens(file.as_raw_fd(), times.as_ptr());
     }

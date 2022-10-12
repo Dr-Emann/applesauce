@@ -39,6 +39,9 @@ impl<'a> io::Write for ResourceFork<'a> {
             .offset
             .checked_add(len)
             .ok_or(io::ErrorKind::UnexpectedEof)?;
+        // SAFETY:
+        // fd is valid
+        // xattr name is valid
         let rc = unsafe {
             libc::fsetxattr(
                 self.file.as_raw_fd(),
@@ -62,6 +65,10 @@ impl Seek for ResourceFork<'_> {
         let new_offset: u32 = match pos {
             SeekFrom::Start(i) => i.try_into().map_err(|_| io::ErrorKind::InvalidInput)?,
             SeekFrom::End(i) => {
+                // SAFETY:
+                // fd is valid
+                // xattr name is valid, and null terminated
+                // value == NULL && size == 0 is allowed, to just return the length of the value
                 let rc = unsafe {
                     libc::fgetxattr(
                         self.file.as_raw_fd(),
