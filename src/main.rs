@@ -1,10 +1,13 @@
+use squashed_apple::compressor::Compressor;
 use std::path::Path;
 
 fn main() {
     let path = Path::new("/tmp/file");
     let metadata = path.metadata().unwrap();
 
-    match squashed_apple::compress(path, &metadata) {
+    let mut compressor = Compressor::zlib();
+
+    match squashed_apple::compress(path, &metadata, &mut compressor) {
         Ok(()) => {}
         Err(e) => eprintln!("Error compressing {}: {}", path.display(), e),
     }

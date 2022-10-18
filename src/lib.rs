@@ -1,7 +1,9 @@
+pub mod compressor;
 mod decmpfs;
 pub mod resource_fork;
 
-use flate2::write::ZlibEncoder;
+use crate::decmpfs::{CompressionType, Storage};
+use crate::resource_fork::ResourceFork;
 use libc::c_char;
 use std::ffi::{CStr, CString};
 use std::fs::{File, Metadata, Permissions};
@@ -24,8 +26,7 @@ macro_rules! cstr {
     }};
 }
 
-use crate::decmpfs::{CompressionType, Storage};
-use crate::resource_fork::ResourceFork;
+use crate::compressor::{Compressor, CompressorImpl};
 pub(crate) use cstr;
 
 const BLOCK_SIZE: usize = 0x10000;
@@ -255,7 +256,7 @@ impl Drop for ForceWritableFile {
     }
 }
 
-pub fn compress(path: &Path, metadata: &Metadata) -> io::Result<()> {
+pub fn compress(path: &Path, metadata: &Metadata, comp: &mut Compressor) -> io::Result<()> {
     check_compressable(path, metadata)?;
 
     let file = ForceWritableFile::new(path, metadata)?;
@@ -267,34 +268,13 @@ pub fn compress(path: &Path, metadata: &Metadata) -> io::Result<()> {
         .try_into()
         .map_err(|_| io::ErrorKind::InvalidInput)?;
 
-    compressed_data.seek(SeekFrom::Start(
-        decmpfs::ZLIB_BLOCK_START
-            + mem::size_of::<u32>() as u64
-            + u64::from(block_count) * decmpfs::ZlibBlockInfo::SIZE,
-    ))?;
+    compressed_data.seek(SeekFrom::Start(comp.blocks_start(block_count.into())))?;
 
-    let mut block_info = Vec::with_capacity(block_count as usize);
+    let mut block_sizes = Vec::with_capacity(block_count as usize);
 
-    raw_zlib_compress_into(&*file, &mut compressed_data, &mut block_info)?;
-    let compressed_data_size: u32 = compressed_data
-        .stream_position()?
-        .try_into()
-        .map_err(|_| io::ErrorKind::InvalidInput)?;
-    compressed_data.write_all(&decmpfs::ZLIB_TRAILER)?;
+    raw_compress_into(&*file, &mut compressed_data, comp, &mut block_sizes)?;
 
-    compressed_data.seek(SeekFrom::Start(0))?;
-    compressed_data.write_all(&0x100u32.to_be_bytes())?;
-    compressed_data.write_all(&compressed_data_size.to_be_bytes())?;
-    compressed_data.write_all(&(compressed_data_size - 0x100).to_be_bytes())?;
-    compressed_data.write_all(&0x32u8.to_be_bytes())?;
-
-    compressed_data.seek(SeekFrom::Start(0x100))?;
-    compressed_data.write_all(&(compressed_data_size - 0x104).to_be_bytes())?;
-
-    compressed_data.write_all(&block_count.to_le_bytes())?;
-    for block in &block_info {
-        block.write_into(&mut compressed_data)?;
-    }
+    comp.finish(&mut compressed_data, &block_sizes)?;
     compressed_data.flush()?;
     drop(compressed_data);
 
@@ -357,54 +337,40 @@ fn try_read_all<R: Read>(mut r: R, buf: &mut [u8]) -> io::Result<usize> {
     let full_len = buf.len();
     let mut remaining = buf;
     loop {
-        let n = r.read(remaining)?;
+        let n = match r.read(remaining) {
+            Ok(n) => n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        if n == 0 {
+            break;
+        }
         remaining = &mut remaining[n..];
         if remaining.is_empty() {
             return Ok(full_len);
-        } else if n == 0 {
-            break;
         }
     }
     Ok(full_len - remaining.len())
 }
 
-fn raw_zlib_compress_into<R: Read, W: Write + Seek>(
+fn raw_compress_into<R: Read, W: Write + Seek>(
     mut r: R,
     mut w: W,
-    block_info: &mut Vec<decmpfs::ZlibBlockInfo>,
+    comp: &mut Compressor,
+    block_sizes: &mut Vec<u32>,
 ) -> io::Result<()> {
-    let mut buffer = vec![0; BLOCK_SIZE];
-    let mut last_block_start = w.stream_position()?;
+    let mut read_buffer = vec![0; BLOCK_SIZE];
+    let mut write_buffer = vec![0; BLOCK_SIZE + 1024];
 
     loop {
-        let n = try_read_all(&mut r, &mut buffer)?;
+        let n = try_read_all(&mut r, &mut read_buffer)?;
         if n == 0 {
             break;
         }
-        let data = &buffer[..n];
 
-        let mut compressor = ZlibEncoder::new(&mut w, flate2::Compression::default());
-        compressor.write_all(data)?;
-        compressor.finish()?;
-
-        let mut next_block_start = w.stream_position()?;
-        if next_block_start - last_block_start > data.len() as u64 {
-            w.seek(SeekFrom::Start(last_block_start))?;
-            w.write_all(&[0xFF])?;
-            w.write_all(data)?;
-            next_block_start = last_block_start + data.len() as u64 + 1;
-        }
-
-        block_info.push(decmpfs::ZlibBlockInfo {
-            offset: (last_block_start - decmpfs::ZLIB_BLOCK_START)
-                .try_into()
-                .map_err(|_| io::ErrorKind::InvalidInput)?,
-            compressed_size: (next_block_start - last_block_start)
-                .try_into()
-                .map_err(|_| io::ErrorKind::InvalidInput)?,
-        });
-
-        last_block_start = next_block_start;
+        let dst_len = comp.compress(&mut write_buffer, &read_buffer[..n])?;
+        w.write_all(&write_buffer[..dst_len])?;
+        block_sizes.push(dst_len.try_into().unwrap());
     }
     Ok(())
 }

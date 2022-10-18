@@ -5,7 +5,7 @@ use std::{io, mem};
 pub const MAX_XATTR_SIZE: usize = 3802;
 pub const MAGIC: u32 = u32::from_be_bytes(*b"cmpf");
 
-pub const ZLIB_BLOCK_START: u64 = 0x104;
+pub const ZLIB_BLOCK_TABLE_START: u64 = 0x104;
 
 pub const XATTR_NAME: &CStr = crate::cstr!("com.apple.decmpfs");
 
@@ -98,8 +98,8 @@ impl ZlibBlockInfo {
     pub const SIZE: u64 = mem::size_of::<u32>() as u64 * 2;
 
     pub fn write_into<W: io::Write>(self, mut w: W) -> io::Result<()> {
-        w.write_all(&self.offset.to_le_bytes())?;
-        w.write_all(&self.compressed_size.to_le_bytes())?;
+        w.write_all(&u32::to_le_bytes(self.offset))?;
+        w.write_all(&u32::to_le_bytes(self.compressed_size))?;
         Ok(())
     }
 }
