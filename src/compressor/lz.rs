@@ -39,7 +39,7 @@ impl<I: Impl> Lz<I> {
 
 impl<I: Impl> CompressorImpl for Lz<I> {
     fn blocks_start(&self, block_count: u64) -> u64 {
-        block_count * mem::size_of::<u64>() as u64
+        (block_count + 1) * mem::size_of::<u32>() as u64
     }
 
     fn compress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
