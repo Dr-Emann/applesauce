@@ -104,6 +104,8 @@ impl<I: Impl> CompressorImpl for Lz<I> {
                 )
             })?;
         }
+        // Write the final offset
+        writer.write_all(&u32::to_le_bytes(offset))?;
         Ok(())
     }
 }

@@ -40,6 +40,17 @@ impl Compressor {
     pub fn lzvn() -> Self {
         Self(Data::Lzvn(Lzvn::new()))
     }
+
+    pub fn kind(&self) -> Kind {
+        match &self.0 {
+            #[cfg(feature = "zlib")]
+            Data::Zlib(_) => Kind::Zlib,
+            #[cfg(feature = "lzfse")]
+            Data::Lzfse(_) => Kind::Lzfse,
+            #[cfg(feature = "lzvn")]
+            Data::Lzvn(_) => Kind::Lzvn,
+        }
+    }
 }
 
 enum Data {
@@ -49,19 +60,6 @@ enum Data {
     Lzfse(Lzfse),
     #[cfg(feature = "lzvn")]
     Lzvn(Lzvn),
-}
-
-impl Data {
-    pub fn kind(&self) -> Kind {
-        match self {
-            #[cfg(feature = "zlib")]
-            Data::Zlib(_) => Kind::Zlib,
-            #[cfg(feature = "lzfse")]
-            Data::Lzfse(_) => Kind::Lzfse,
-            #[cfg(feature = "lzvn")]
-            Data::Lzvn(_) => Kind::Lzvn,
-        }
-    }
 }
 
 impl CompressorImpl for Compressor {

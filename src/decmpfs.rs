@@ -1,4 +1,4 @@
-use crate::Compression;
+use crate::compressor;
 use std::ffi::CStr;
 use std::{io, mem};
 
@@ -17,7 +17,7 @@ pub enum Storage {
 
 #[derive(Copy, Clone)]
 pub struct CompressionType {
-    pub compression: Compression,
+    pub compression: compressor::Kind,
     pub storage: Storage,
 }
 
@@ -25,29 +25,29 @@ impl CompressionType {
     pub fn raw_type(self) -> u32 {
         match self {
             CompressionType {
-                compression: Compression::ZLIB,
+                compression: compressor::Kind::Zlib,
                 storage: Storage::Xattr,
             } => 3,
             CompressionType {
-                compression: Compression::ZLIB,
+                compression: compressor::Kind::Zlib,
                 storage: Storage::ResourceFork,
             } => 4,
 
             CompressionType {
-                compression: Compression::LZVN,
+                compression: compressor::Kind::Lzvn,
                 storage: Storage::Xattr,
             } => 7,
             CompressionType {
-                compression: Compression::LZVN,
+                compression: compressor::Kind::Lzvn,
                 storage: Storage::ResourceFork,
             } => 8,
 
             CompressionType {
-                compression: Compression::LZFSE,
+                compression: compressor::Kind::Lzfse,
                 storage: Storage::Xattr,
             } => 11,
             CompressionType {
-                compression: Compression::LZFSE,
+                compression: compressor::Kind::Lzfse,
                 storage: Storage::ResourceFork,
             } => 12,
         }

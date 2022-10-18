@@ -175,34 +175,6 @@ fn has_xattr(path: &CStr, xattr_name: &CStr) -> io::Result<bool> {
     Ok(true)
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum Compression {
-    ZLIB,
-    LZVN,
-    LZFSE,
-}
-
-impl Compression {
-    #[must_use]
-    pub fn supported(self) -> bool {
-        match self {
-            Compression::ZLIB => {
-                cfg!(feature = "zlib")
-            }
-            Compression::LZVN | Compression::LZFSE => {
-                // TODO:
-                false
-            }
-        }
-    }
-}
-
-struct CompressionConfig {
-    max_size: u64,
-    allow_large_blocks: bool,
-    compression: Compression,
-}
-
 struct ForceWritableFile {
     file: File,
     permissions: Option<Permissions>,
@@ -281,7 +253,7 @@ pub fn compress(path: &Path, metadata: &Metadata, comp: &mut Compressor) -> io::
     let mut decomp_xattr_val = Vec::with_capacity(decmpfs::DiskHeader::SIZE);
     let header = decmpfs::DiskHeader {
         compression_type: CompressionType {
-            compression: Compression::ZLIB,
+            compression: comp.kind(),
             storage: Storage::ResourceFork,
         }
         .raw_type(),
