@@ -108,7 +108,7 @@ mod tests {
         assert_eq!(result[0x100..0x104], u32::to_be_bytes(0x200 - 0x104));
         assert_eq!(
             result[0x104..0x108],
-            u32::to_be_bytes(block_sizes.len() as _)
+            u32::to_le_bytes(block_sizes.len() as _)
         );
     }
 }
