@@ -267,17 +267,14 @@ impl FileCompressor {
         self.block_sizes.clear();
         let decmp_storage: Storage;
         let decmp_extra_xattr_data: &[u8];
-        let needs_finish: bool;
         match self.raw_compress_into(&*file, &mut resource_fork, file_size)? {
             RawCompressResult::SingleBlock { write_buf_len } => {
                 decmp_storage = Storage::Xattr;
                 decmp_extra_xattr_data = &self.write_buffer[..write_buf_len];
-                needs_finish = false;
             }
             RawCompressResult::BlocksWritten => {
                 decmp_storage = Storage::ResourceFork;
                 decmp_extra_xattr_data = &[];
-                needs_finish = true;
             }
         }
         let compression_type = CompressionType {
@@ -291,14 +288,16 @@ impl FileCompressor {
 
         self.decomp_xattr_val_buf.clear();
         header.write_into(&mut self.decomp_xattr_val_buf)?;
-        self.decomp_xattr_val_buf
-            .extend_from_slice(decmp_extra_xattr_data);
-        if needs_finish {
+
+        if decmp_extra_xattr_data.is_empty() {
             // Wrap in a BufWriter, since finish does several writes
             let mut resource_fork = BufWriter::new(resource_fork);
             self.compressor
                 .finish(&mut resource_fork, &self.block_sizes)?;
             resource_fork.flush()?;
+        } else {
+            self.decomp_xattr_val_buf
+                .extend_from_slice(decmp_extra_xattr_data);
         }
 
         // SAFETY:
