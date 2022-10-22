@@ -3,11 +3,9 @@ use std::path::Path;
 
 fn main() {
     let path = Path::new("/tmp/file");
-    let metadata = path.metadata().unwrap();
 
-    let mut compressor = Compressor::lzfse();
-
-    match squashed_apple::compress(path, &metadata, &mut compressor) {
+    let mut compressor = squashed_apple::FileCompressor::new(Compressor::lzfse());
+    match compressor.compress_path(path) {
         Ok(()) => {}
         Err(e) => eprintln!("Error compressing {}: {}", path.display(), e),
     }

@@ -181,7 +181,7 @@ struct ForceWritableFile {
 }
 
 impl ForceWritableFile {
-    fn new(path: &Path, metadata: &Metadata) -> io::Result<Self> {
+    fn open(path: &Path, metadata: &Metadata) -> io::Result<Self> {
         let old_perm = metadata.permissions();
         let new_perm = Permissions::from_mode(
             old_perm.mode() | u32::from(libc::S_IWUSR) | u32::from(libc::S_IRUSR),
@@ -219,7 +219,7 @@ impl Deref for ForceWritableFile {
 
 impl Drop for ForceWritableFile {
     fn drop(&mut self) {
-        if let Some(permissions) = self.permissions.take() {
+        if let Some(permissions) = self.permissions.clone() {
             let res = self.file.set_permissions(permissions);
             if let Err(e) = res {
                 eprintln!("Error resetting permissions {}", e);
@@ -228,81 +228,194 @@ impl Drop for ForceWritableFile {
     }
 }
 
-pub fn compress(path: &Path, metadata: &Metadata, comp: &mut Compressor) -> io::Result<()> {
-    check_compressable(path, metadata)?;
+pub struct FileCompressor {
+    compressor: Compressor,
+    decomp_xattr_val_buf: Vec<u8>,
+    read_buffer: Box<[u8]>,
+    write_buffer: Box<[u8]>,
+    block_sizes: Vec<u32>,
+}
 
-    let file = ForceWritableFile::new(path, metadata)?;
-    let mut compressed_data = BufWriter::new(ResourceFork::new(&file));
-
-    let metadata = file.metadata()?;
-    let file_size = metadata.len();
-    let block_count: u32 = num_blocks(file_size)
-        .try_into()
-        .map_err(|_| io::ErrorKind::InvalidInput)?;
-
-    compressed_data.seek(SeekFrom::Start(comp.blocks_start(block_count.into())))?;
-
-    let mut block_sizes = Vec::with_capacity(block_count as usize);
-
-    raw_compress_into(&*file, &mut compressed_data, comp, &mut block_sizes)?;
-
-    comp.finish(&mut compressed_data, &block_sizes)?;
-    compressed_data.flush()?;
-    drop(compressed_data);
-
-    let mut decomp_xattr_val = Vec::with_capacity(decmpfs::DiskHeader::SIZE);
-    let header = decmpfs::DiskHeader {
-        compression_type: CompressionType {
-            compression: comp.kind(),
-            storage: Storage::ResourceFork,
+impl FileCompressor {
+    pub fn new(compressor: Compressor) -> Self {
+        Self {
+            compressor,
+            decomp_xattr_val_buf: Vec::with_capacity(decmpfs::DiskHeader::SIZE),
+            read_buffer: vec![0; BLOCK_SIZE].into_boxed_slice(),
+            write_buffer: vec![0; BLOCK_SIZE + 1024].into_boxed_slice(),
+            block_sizes: Vec::new(),
         }
-        .raw_type(),
-        uncompressed_size: file_size,
-    };
-    header.write_into(&mut decomp_xattr_val)?;
-    // SAFETY:
-    // fd is valid
-    // xattr name is valid and null terminated
-    // value is valid, writable, and initialized up to `.len()` bytes
-    let rc = unsafe {
-        libc::fsetxattr(
-            file.as_raw_fd(),
-            decmpfs::XATTR_NAME.as_ptr(),
-            decomp_xattr_val.as_ptr().cast(),
-            decomp_xattr_val.len(),
-            0,
-            libc::XATTR_SHOWCOMPRESSION,
-        )
-    };
-    if rc != 0 {
-        return Err(io::Error::last_os_error());
-    }
-    file.set_len(0)?;
-
-    // SAFETY: fd is valid
-    let rc = unsafe { libc::fchflags(file.as_raw_fd(), metadata.st_flags() | libc::UF_COMPRESSED) };
-    if rc < 0 {
-        let e = io::Error::last_os_error();
-        // TODO: Roll back better
-        return Err(e);
     }
 
-    let times: [libc::timespec; 2] = [
-        libc::timespec {
-            tv_sec: metadata.atime(),
-            tv_nsec: metadata.atime_nsec(),
-        },
-        libc::timespec {
-            tv_sec: metadata.mtime(),
-            tv_nsec: metadata.mtime_nsec(),
-        },
-    ];
-    // SAFETY: fd is valid, times points to an array of 2 timespec values
-    unsafe {
-        libc::futimens(file.as_raw_fd(), times.as_ptr());
+    pub fn compress_path(&mut self, path: &Path) -> io::Result<()> {
+        let metadata = path.metadata()?;
+
+        check_compressable(path, &metadata)?;
+
+        let file = ForceWritableFile::open(path, &metadata)?;
+        let mut resource_fork = ResourceFork::new(&file);
+
+        let file_size = metadata.len();
+        let block_count: u32 = num_blocks(file_size)
+            .try_into()
+            .map_err(|_| io::ErrorKind::InvalidInput)?;
+
+        resource_fork.seek(SeekFrom::Start(
+            self.compressor.blocks_start(block_count.into()),
+        ))?;
+
+        self.block_sizes.clear();
+        let decmp_storage: Storage;
+        let decmp_extra_xattr_data: &[u8];
+        let needs_finish: bool;
+        match self.raw_compress_into(&*file, &mut resource_fork, file_size)? {
+            RawCompressResult::SingleBlock { write_buf_len } => {
+                decmp_storage = Storage::Xattr;
+                decmp_extra_xattr_data = &self.write_buffer[..write_buf_len];
+                needs_finish = false;
+            }
+            RawCompressResult::BlocksWritten => {
+                decmp_storage = Storage::ResourceFork;
+                decmp_extra_xattr_data = &[];
+                needs_finish = true;
+            }
+        }
+        let compression_type = CompressionType {
+            compression: self.compressor.kind(),
+            storage: decmp_storage,
+        };
+        let header = decmpfs::DiskHeader {
+            compression_type: compression_type.raw_type(),
+            uncompressed_size: file_size,
+        };
+
+        self.decomp_xattr_val_buf.clear();
+        header.write_into(&mut self.decomp_xattr_val_buf)?;
+        self.decomp_xattr_val_buf
+            .extend_from_slice(decmp_extra_xattr_data);
+        if needs_finish {
+            // Wrap in a BufWriter, since finish does several writes
+            let mut resource_fork = BufWriter::new(resource_fork);
+            self.compressor
+                .finish(&mut resource_fork, &self.block_sizes)?;
+            resource_fork.flush()?;
+        }
+
+        // SAFETY:
+        // fd is valid
+        // xattr name is valid and null terminated
+        // value is valid, writable, and initialized up to `.len()` bytes
+        let rc = unsafe {
+            libc::fsetxattr(
+                file.as_raw_fd(),
+                decmpfs::XATTR_NAME.as_ptr(),
+                self.decomp_xattr_val_buf.as_ptr().cast(),
+                self.decomp_xattr_val_buf.len(),
+                0,
+                libc::XATTR_SHOWCOMPRESSION,
+            )
+        };
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        file.set_len(0)?;
+
+        // SAFETY: fd is valid
+        let rc =
+            unsafe { libc::fchflags(file.as_raw_fd(), metadata.st_flags() | libc::UF_COMPRESSED) };
+        if rc < 0 {
+            let e = io::Error::last_os_error();
+            // TODO: Roll back better
+            return Err(e);
+        }
+
+        let times: [libc::timespec; 2] = [
+            libc::timespec {
+                tv_sec: metadata.atime(),
+                tv_nsec: metadata.atime_nsec(),
+            },
+            libc::timespec {
+                tv_sec: metadata.mtime(),
+                tv_nsec: metadata.mtime_nsec(),
+            },
+        ];
+        // SAFETY: fd is valid, times points to an array of 2 timespec values
+        unsafe {
+            libc::futimens(file.as_raw_fd(), times.as_ptr());
+        }
+
+        Ok(())
     }
 
-    Ok(())
+    fn raw_compress_into<R: Read, W: Write + Seek>(
+        &mut self,
+        mut r: R,
+        mut w: W,
+        expected_len: u64,
+    ) -> io::Result<RawCompressResult> {
+        self.block_sizes.clear();
+        let block_count = num_blocks(expected_len);
+        let mut total_read = 0;
+
+        if block_count <= 1 {
+            let n = try_read_all(&mut r, &mut self.read_buffer)?;
+            total_read += u64::try_from(n).unwrap();
+            if total_read != expected_len.try_into().unwrap() {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "file size changed while reading",
+                ));
+            }
+            if block_count == 0 {
+                return Ok(RawCompressResult::SingleBlock { write_buf_len: 0 });
+            }
+
+            let dst_len = self
+                .compressor
+                .compress(&mut self.write_buffer, &self.read_buffer[..n])?;
+            // unwrap safe: dst_len <= write_buffer.len()
+            self.block_sizes.push(dst_len.try_into().unwrap());
+
+            // If the block will fit in the xattr, return a single block
+            if dst_len + decmpfs::DiskHeader::SIZE < decmpfs::MAX_XATTR_SIZE {
+                return Ok(RawCompressResult::SingleBlock {
+                    write_buf_len: dst_len,
+                });
+            }
+        }
+
+        loop {
+            let n = try_read_all(&mut r, &mut self.read_buffer)?;
+            if n == 0 {
+                break;
+            }
+            total_read += u64::try_from(n).unwrap();
+            if total_read > expected_len {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "file size changed while reading",
+                ));
+            }
+
+            let dst_len = self
+                .compressor
+                .compress(&mut self.write_buffer, &self.read_buffer[..n])?;
+            w.write_all(&self.write_buffer[..dst_len])?;
+            self.block_sizes.push(dst_len.try_into().unwrap());
+        }
+        if total_read != expected_len.try_into().unwrap() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "file size changed while reading",
+            ));
+        }
+        Ok(RawCompressResult::BlocksWritten)
+    }
+}
+
+enum RawCompressResult {
+    SingleBlock { write_buf_len: usize },
+    BlocksWritten,
 }
 
 fn try_read_all<R: Read>(mut r: R, buf: &mut [u8]) -> io::Result<usize> {
@@ -323,28 +436,6 @@ fn try_read_all<R: Read>(mut r: R, buf: &mut [u8]) -> io::Result<usize> {
         }
     }
     Ok(full_len - remaining.len())
-}
-
-fn raw_compress_into<R: Read, W: Write + Seek>(
-    mut r: R,
-    mut w: W,
-    comp: &mut Compressor,
-    block_sizes: &mut Vec<u32>,
-) -> io::Result<()> {
-    let mut read_buffer = vec![0; BLOCK_SIZE];
-    let mut write_buffer = vec![0; BLOCK_SIZE + 1024];
-
-    loop {
-        let n = try_read_all(&mut r, &mut read_buffer)?;
-        if n == 0 {
-            break;
-        }
-
-        let dst_len = comp.compress(&mut write_buffer, &read_buffer[..n])?;
-        w.write_all(&write_buffer[..dst_len])?;
-        block_sizes.push(dst_len.try_into().unwrap());
-    }
-    Ok(())
 }
 
 fn checked_add_signed(x: u64, i: i64) -> Option<u64> {
