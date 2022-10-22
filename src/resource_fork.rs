@@ -22,15 +22,6 @@ impl<'a> ResourceFork<'a> {
 
 impl<'a> io::Write for ResourceFork<'a> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.write_all(buf)?;
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-
-    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
         let len: u32 = buf
             .len()
             .try_into()
@@ -56,6 +47,10 @@ impl<'a> io::Write for ResourceFork<'a> {
             return Err(io::Error::last_os_error());
         }
         self.offset = end_offset;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
