@@ -26,10 +26,12 @@ impl<'a> io::Write for ResourceFork<'a> {
             .len()
             .try_into()
             .map_err(|_| io::ErrorKind::InvalidInput)?;
-        let end_offset = self
-            .offset
-            .checked_add(len)
-            .ok_or(io::ErrorKind::UnexpectedEof)?;
+        let end_offset = self.offset.checked_add(len).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                "unable to fit resource fork in 32 bits",
+            )
+        })?;
         // SAFETY:
         // fd is valid
         // xattr name is valid

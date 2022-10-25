@@ -2,6 +2,7 @@ pub mod compressor;
 mod decmpfs;
 pub mod resource_fork;
 
+use crate::compressor::{Compressor, CompressorImpl};
 use crate::decmpfs::{CompressionType, Storage};
 use crate::resource_fork::ResourceFork;
 use libc::c_char;
@@ -26,11 +27,9 @@ macro_rules! cstr {
     }};
 }
 
-use crate::compressor::{Compressor, CompressorImpl};
 pub(crate) use cstr;
 
 const BLOCK_SIZE: usize = 0x10000;
-const MAX_COMPRESSION_SIZE: u64 = (1 << 31) - 1;
 
 const fn c_char_bytes(chars: &[c_char]) -> &[u8] {
     assert!(mem::size_of::<c_char>() == mem::size_of::<u8>());
@@ -60,12 +59,6 @@ pub fn check_compressable(path: &Path, metadata: &Metadata) -> io::Result<()> {
             io::ErrorKind::Other,
             "file already compressed",
         ));
-    }
-
-    let blocks = num_blocks(metadata.len());
-    // TODO: why 0x13A, why * 9?
-    if metadata.len() + 0x13A + (blocks * 9) > MAX_COMPRESSION_SIZE {
-        return Err(io::Error::new(io::ErrorKind::Other, "file too large"));
     }
 
     let path = CString::new(path.as_os_str().as_bytes())?;
