@@ -5,6 +5,8 @@ use std::marker::PhantomData;
 use std::{io, mem};
 
 pub trait Impl {
+    const UNCOMPRESSED_PREFIX: Option<u8> = None;
+
     fn scratch_size() -> usize;
 
     unsafe fn encode(
@@ -43,22 +45,35 @@ impl<I: Impl> CompressorImpl for Lz<I> {
     }
 
     fn compress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
+        assert!(dst.len() > src.len());
+
+        let max_compress_size = if I::UNCOMPRESSED_PREFIX.is_some() {
+            src.len()
+        } else {
+            dst.len()
+        };
         // SAFETY:
         // dst is valid to write up to len bytes
+        // len is either dst.len() or src.len(), and dst.len() > src.len()
         // src is initialised for len bytes
         // buf is valid to write up to scratch size bytes
         let len = unsafe {
             I::encode(
                 dst.as_mut_ptr(),
-                dst.len(),
+                max_compress_size,
                 src.as_ptr(),
                 src.len(),
                 self.buf.as_mut_ptr().cast(),
             )
         };
-        debug_assert!(len < dst.len());
+        debug_assert!(len <= max_compress_size);
         if len == 0 {
-            return Err(io::ErrorKind::WriteZero.into());
+            if let Some(uncompressed_prefix) = I::UNCOMPRESSED_PREFIX {
+                dst[0] = uncompressed_prefix;
+                dst[1..][..src.len()].copy_from_slice(src);
+            } else {
+                return Err(io::ErrorKind::WriteZero.into());
+            }
         }
         Ok(len)
     }

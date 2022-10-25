@@ -9,6 +9,8 @@ pub type Lzvn = lz::Lz<LzvnImpl>;
 pub enum LzvnImpl {}
 
 impl lz::Impl for LzvnImpl {
+    const UNCOMPRESSED_PREFIX: Option<u8> = Some(0x06);
+
     fn scratch_size() -> usize {
         cmp::max(mem::size_of::<DecoderState>(), unsafe {
             lzvn_encode_scratch_size()
@@ -22,7 +24,18 @@ impl lz::Impl for LzvnImpl {
         src_len: usize,
         scratch: *mut c_void,
     ) -> usize {
-        lzvn_encode_buffer(dst, dst_len, src, src_len, scratch)
+        debug_assert!(!dst.is_null());
+        debug_assert!(!src.is_null());
+        debug_assert!(!scratch.is_null());
+
+        // No overlap
+        debug_assert!(
+            src as usize > (dst.add(dst_len) as usize)
+                || (src.add(src_len) as usize) < dst as usize
+        );
+        let res = lzvn_encode_buffer(dst, dst_len, src, src_len, scratch);
+        debug_assert!(res <= dst_len);
+        res
     }
 
     unsafe fn decode(
@@ -32,6 +45,15 @@ impl lz::Impl for LzvnImpl {
         src_len: usize,
         scratch: *mut c_void,
     ) -> usize {
+        debug_assert!(!dst.is_null());
+        debug_assert!(!src.is_null());
+        debug_assert!(!scratch.is_null());
+
+        // No overlap
+        debug_assert!(
+            src as usize > (dst.add(dst_len) as usize)
+                || (src.add(src_len) as usize) < dst as usize
+        );
         decode(
             slice::from_raw_parts_mut(dst, dst_len),
             slice::from_raw_parts(src, src_len),
