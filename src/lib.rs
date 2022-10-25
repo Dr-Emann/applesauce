@@ -50,7 +50,7 @@ fn num_blocks(size: u64) -> u64 {
     (size + (BLOCK_SIZE as u64 - 1)) / (BLOCK_SIZE as u64)
 }
 
-pub fn check_compressable(path: &Path, metadata: &Metadata) -> io::Result<()> {
+pub fn check_compressible(path: &Path, metadata: &Metadata) -> io::Result<()> {
     if !metadata.is_file() {
         return Err(io::Error::new(io::ErrorKind::Other, "not a file"));
     }
@@ -243,7 +243,7 @@ impl FileCompressor {
     pub fn compress_path(&mut self, path: &Path) -> io::Result<()> {
         let metadata = path.metadata()?;
 
-        check_compressable(path, &metadata)?;
+        check_compressible(path, &metadata)?;
 
         let file = ForceWritableFile::open(path, &metadata)?;
         let mut resource_fork = ResourceFork::new(&file);
