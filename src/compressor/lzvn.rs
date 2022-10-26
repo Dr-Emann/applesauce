@@ -4,17 +4,19 @@ use std::ffi::c_void;
 use std::mem::MaybeUninit;
 use std::{cmp, mem, slice};
 
-pub type Lzvn = lz::Lz<LzvnImpl>;
+pub type Lzvn = lz::Lz<Impl>;
 
-pub enum LzvnImpl {}
+pub enum Impl {}
 
-impl lz::Impl for LzvnImpl {
+impl lz::Impl for Impl {
     const UNCOMPRESSED_PREFIX: Option<u8> = Some(0x06);
 
     fn scratch_size() -> usize {
-        cmp::max(mem::size_of::<DecoderState>(), unsafe {
-            lzvn_encode_scratch_size()
-        })
+        cmp::max(
+            mem::size_of::<DecoderState>() + mem::align_of::<DecoderState>(),
+            // Safety: this function is always safe to call
+            unsafe { lzvn_encode_scratch_size() },
+        )
     }
 
     unsafe fn encode(
@@ -43,11 +45,10 @@ impl lz::Impl for LzvnImpl {
         dst_len: usize,
         src: *const u8,
         src_len: usize,
-        scratch: *mut c_void,
+        _scratch: *mut c_void,
     ) -> usize {
         debug_assert!(!dst.is_null());
         debug_assert!(!src.is_null());
-        debug_assert!(!scratch.is_null());
 
         // No overlap
         debug_assert!(
@@ -57,7 +58,6 @@ impl lz::Impl for LzvnImpl {
         decode(
             slice::from_raw_parts_mut(dst, dst_len),
             slice::from_raw_parts(src, src_len),
-            &mut *scratch.cast::<MaybeUninit<_>>(),
         )
     }
 }
@@ -102,18 +102,26 @@ extern "C" {
     fn lzvn_decode(state: *mut DecoderState);
 }
 
-fn decode(dst: &mut [u8], src: &[u8], buf: &mut MaybeUninit<DecoderState>) -> usize {
+fn decode(dst: &mut [u8], src: &[u8]) -> usize {
+    // SAFETY: decoder state is all numeric and safe to zero init
+    let mut state: DecoderState = unsafe { MaybeUninit::zeroed().assume_init() };
+
+    let src_range = src.as_ptr_range();
+    state.src = src_range.start;
+    state.src_end = src_range.end;
+
+    let dst_range = dst.as_mut_ptr_range();
+    state.dst = dst_range.start;
+    state.dst_begin = dst_range.start;
+    state.dst_end = dst_range.end;
+
+    // SAFETY: state is fully initialized
     unsafe {
-        buf.as_mut_ptr().write_bytes(0, 1);
-        let state = buf.assume_init_mut();
-        state.src = src.as_ptr();
-        state.src_end = src.as_ptr().add(src.len());
-        state.dst = dst.as_mut_ptr();
-        state.dst_begin = dst.as_mut_ptr();
-        state.dst_end = dst.as_mut_ptr().add(dst.len());
-        lzvn_decode(state);
-        state.dst.offset_from(dst.as_mut_ptr()) as usize
+        lzvn_decode(&mut state);
     }
+    // SAFETY: lvzn_decode will have updated the dst ptr on state,
+    //         but kept within range dst..dst_end
+    unsafe { state.dst.offset_from(dst.as_mut_ptr()) as usize }
 }
 
 #[test]

@@ -27,20 +27,24 @@ pub struct Compressor(Data);
 
 impl Compressor {
     #[cfg(feature = "zlib")]
+    #[must_use]
     pub fn zlib() -> Self {
         Self(Data::Zlib(Zlib))
     }
 
     #[cfg(feature = "lzfse")]
+    #[must_use]
     pub fn lzfse() -> Self {
         Self(Data::Lzfse(Lzfse::new()))
     }
 
     #[cfg(feature = "lzvn")]
+    #[must_use]
     pub fn lzvn() -> Self {
         Self(Data::Lzvn(Lzvn::new()))
     }
 
+    #[must_use]
     pub fn kind(&self) -> Kind {
         match &self.0 {
             #[cfg(feature = "zlib")]

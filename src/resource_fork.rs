@@ -62,6 +62,11 @@ impl Read for ResourceFork<'_> {
         // Despite the manpage for getxattr saying:
         // > On success, the size of the extended attribute data is returned
         // it actually returns the size remaining _after_ the passed index
+
+        // SAFETY:
+        //   fd is valid
+        //   xattr name is valid, and null terminated
+        //   buf is valid, and writable for up to len() bytes
         let rc = unsafe {
             libc::fgetxattr(
                 self.file.as_raw_fd(),
@@ -86,6 +91,10 @@ impl Read for ResourceFork<'_> {
     }
 
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
+        // SAFETY:
+        //   fd is valid
+        //   xattr name is valid, and null terminated
+        //   a null value and size are allowed
         let rc = unsafe {
             libc::fgetxattr(
                 self.file.as_raw_fd(),

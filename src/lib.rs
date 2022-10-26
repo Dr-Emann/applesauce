@@ -50,7 +50,7 @@ fn num_blocks(size: u64) -> u64 {
     (size + (BLOCK_SIZE as u64 - 1)) / (BLOCK_SIZE as u64)
 }
 
-pub fn check_compressible(path: &Path, metadata: &Metadata) -> io::Result<()> {
+fn check_compressible(path: &Path, metadata: &Metadata) -> io::Result<()> {
     if !metadata.is_file() {
         return Err(io::Error::new(io::ErrorKind::Other, "not a file"));
     }
@@ -106,6 +106,8 @@ fn vol_supports_compression_cap(mnt_root: &CStr) -> io::Result<bool> {
         length: u32,
         vol_attrs: libc::vol_capabilities_attr_t,
     }
+    const IDX: usize = libc::VOL_CAPABILITIES_FORMAT;
+    const MASK: libc::attrgroup_t = libc::VOL_CAP_FMT_DECMPFS_COMPRESSION;
 
     // SAFETY: All fields are simple integers which can be zero-initialized
     let mut attrs = unsafe { MaybeUninit::<libc::attrlist>::zeroed().assume_init() };
@@ -138,8 +140,6 @@ fn vol_supports_compression_cap(mnt_root: &CStr) -> io::Result<bool> {
         ));
     }
 
-    const IDX: usize = libc::VOL_CAPABILITIES_FORMAT;
-    const MASK: libc::attrgroup_t = libc::VOL_CAP_FMT_DECMPFS_COMPRESSION;
     Ok(vol_attrs.vol_attrs.valid[IDX] & vol_attrs.vol_attrs.capabilities[IDX] & MASK != 0)
 }
 
@@ -230,6 +230,7 @@ pub struct FileCompressor {
 }
 
 impl FileCompressor {
+    #[must_use]
     pub fn new(compressor: Compressor) -> Self {
         Self {
             compressor,
@@ -312,8 +313,8 @@ impl FileCompressor {
         }
         file.set_len(0)?;
 
-        // SAFETY: fd is valid
         let rc =
+            // SAFETY: fd is valid
             unsafe { libc::fchflags(file.as_raw_fd(), metadata.st_flags() | libc::UF_COMPRESSED) };
         if rc < 0 {
             let e = io::Error::last_os_error();
@@ -347,12 +348,12 @@ impl FileCompressor {
     ) -> io::Result<RawCompressResult> {
         self.block_sizes.clear();
         let block_count = num_blocks(expected_len);
-        let mut total_read = 0;
+        let mut total_read: u64 = 0;
 
         if block_count <= 1 {
             let n = try_read_all(&mut r, &mut self.read_buffer)?;
             total_read += u64::try_from(n).unwrap();
-            if total_read != expected_len.try_into().unwrap() {
+            if total_read != expected_len {
                 return Err(io::Error::new(
                     io::ErrorKind::Other,
                     "file size changed while reading",
@@ -395,7 +396,7 @@ impl FileCompressor {
             w.write_all(&self.write_buffer[..dst_len])?;
             self.block_sizes.push(dst_len.try_into().unwrap());
         }
-        if total_read != expected_len.try_into().unwrap() {
+        if total_read != expected_len {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 "file size changed while reading",

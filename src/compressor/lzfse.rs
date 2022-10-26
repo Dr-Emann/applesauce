@@ -1,14 +1,15 @@
 use crate::compressor::lz;
-use lzfse_sys::*;
+use lzfse_sys::{lzfse_decode_buffer, lzfse_decode_scratch_size, lzfse_encode_buffer};
 use std::cmp;
 use std::ffi::c_void;
 
-pub type Lzfse = lz::Lz<LzfseImpl>;
+pub type Lzfse = lz::Lz<Impl>;
 
-pub enum LzfseImpl {}
+pub enum Impl {}
 
-impl lz::Impl for LzfseImpl {
+impl lz::Impl for Impl {
     fn scratch_size() -> usize {
+        // SAFETY: Both of these functions are always safe to call
         unsafe { cmp::max(lzfse_encode_scratch_size(), lzfse_decode_scratch_size()) }
     }
 
