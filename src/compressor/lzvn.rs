@@ -32,8 +32,8 @@ impl lz::Impl for Impl {
 
         // No overlap
         debug_assert!(
-            src as usize > (dst.add(dst_len) as usize)
-                || (src.add(src_len) as usize) < dst as usize
+            src as usize >= (dst.add(dst_len) as usize)
+                || (src.add(src_len) as usize) <= dst as usize
         );
         let res = lzvn_encode_buffer(dst, dst_len, src, src_len, scratch);
         debug_assert!(res <= dst_len);
@@ -52,8 +52,8 @@ impl lz::Impl for Impl {
 
         // No overlap
         debug_assert!(
-            src as usize > (dst.add(dst_len) as usize)
-                || (src.add(src_len) as usize) < dst as usize
+            src as usize >= (dst.add(dst_len) as usize)
+                || (src.add(src_len) as usize) <= dst as usize
         );
         decode(
             slice::from_raw_parts_mut(dst, dst_len),

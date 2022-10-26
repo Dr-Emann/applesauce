@@ -25,8 +25,8 @@ impl lz::Impl for Impl {
 
         // No overlap
         debug_assert!(
-            src as usize > (dst.add(dst_len) as usize)
-                || (src.add(src_len) as usize) < dst as usize
+            src as usize >= (dst.add(dst_len) as usize)
+                || (src.add(src_len) as usize) <= dst as usize
         );
         let res = lzfse_encode_buffer(dst.cast(), dst_len, src.cast(), src_len, scratch);
         debug_assert!(res <= dst_len);
@@ -45,7 +45,8 @@ impl lz::Impl for Impl {
 
         // No overlap
         debug_assert!(
-            src as usize > (dst.add(dst_len) as usize) || src.add(src_len) as usize > dst as usize
+            src as usize >= (dst.add(dst_len) as usize)
+                || (src.add(src_len) as usize) <= dst as usize
         );
         let res = lzfse_decode_buffer(dst.cast(), dst_len, src.cast(), src_len, scratch);
         debug_assert!(res <= dst_len);
