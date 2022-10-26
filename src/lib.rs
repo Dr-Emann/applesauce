@@ -1,3 +1,5 @@
+#![warn(unsafe_op_in_unsafe_fn)]
+
 pub mod compressor;
 mod decmpfs;
 pub mod resource_fork;
@@ -133,7 +135,7 @@ fn vol_supports_compression_cap(mnt_root: &CStr) -> io::Result<bool> {
     }
     // SAFETY: getattrlist returned success
     let vol_attrs = unsafe { vol_attrs.assume_init_ref() };
-    if vol_attrs.length != mem::size_of::<VolAttrs>() as u32 {
+    if vol_attrs.length != u32::try_from(mem::size_of::<VolAttrs>()).unwrap() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "getattrlist returned bad size",
@@ -190,7 +192,7 @@ impl ForceWritableFile {
             Ok(file) => file,
             Err(e) => {
                 if let Some(permissions) = reset_permissions {
-                    let _ = fs::set_permissions(path, permissions);
+                    let _res = fs::set_permissions(path, permissions);
                 }
                 return Err(e);
             }

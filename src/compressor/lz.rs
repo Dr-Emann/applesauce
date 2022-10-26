@@ -1,5 +1,4 @@
 use crate::compressor::CompressorImpl;
-use std::ffi::c_void;
 use std::io::SeekFrom;
 use std::marker::PhantomData;
 use std::{io, mem};
@@ -9,20 +8,8 @@ pub trait Impl {
 
     fn scratch_size() -> usize;
 
-    unsafe fn encode(
-        dst: *mut u8,
-        dst_len: usize,
-        src: *const u8,
-        src_len: usize,
-        scratch: *mut c_void,
-    ) -> usize;
-    unsafe fn decode(
-        dst: *mut u8,
-        dst_len: usize,
-        src: *const u8,
-        src_len: usize,
-        scratch: *mut c_void,
-    ) -> usize;
+    unsafe fn encode(dst: &mut [u8], src: &[u8], scratch: &mut [u8]) -> usize;
+    unsafe fn decode(dst: &mut [u8], src: &[u8], scratch: &mut [u8]) -> usize;
 }
 
 pub struct Lz<I> {
@@ -57,15 +44,7 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         // len is either dst.len() or src.len(), and dst.len() > src.len()
         // src is initialised for len bytes
         // buf is valid to write up to scratch size bytes
-        let len = unsafe {
-            I::encode(
-                dst.as_mut_ptr(),
-                max_compress_size,
-                src.as_ptr(),
-                src.len(),
-                self.buf.as_mut_ptr().cast(),
-            )
-        };
+        let len = unsafe { I::encode(&mut dst[..max_compress_size], src, &mut self.buf) };
         debug_assert!(len <= max_compress_size);
         if len == 0 {
             if let Some(uncompressed_prefix) = I::UNCOMPRESSED_PREFIX {
@@ -83,15 +62,7 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         // dst is valid to write up to len bytes
         // src is initialised for len bytes
         // buf is valid to write up to scratch size bytes
-        let len = unsafe {
-            I::decode(
-                dst.as_mut_ptr(),
-                dst.len(),
-                src.as_ptr(),
-                src.len(),
-                self.buf.as_mut_ptr().cast(),
-            )
-        };
+        let len = unsafe { I::decode(dst, src, &mut self.buf) };
         debug_assert!(len < dst.len());
         if len == 0 || len == dst.len() {
             return Err(io::ErrorKind::WriteZero.into());

@@ -1,7 +1,6 @@
 use crate::compressor::lz;
 use lzfse_sys::{lzfse_decode_buffer, lzfse_decode_scratch_size, lzfse_encode_buffer};
 use std::cmp;
-use std::ffi::c_void;
 
 pub type Lzfse = lz::Lz<Impl>;
 
@@ -13,43 +12,39 @@ impl lz::Impl for Impl {
         unsafe { cmp::max(lzfse_encode_scratch_size(), lzfse_decode_scratch_size()) }
     }
 
-    unsafe fn encode(
-        dst: *mut u8,
-        dst_len: usize,
-        src: *const u8,
-        src_len: usize,
-        scratch: *mut c_void,
-    ) -> usize {
-        debug_assert!(!dst.is_null());
-        debug_assert!(!src.is_null());
+    unsafe fn encode(dst: &mut [u8], src: &[u8], scratch: &mut [u8]) -> usize {
+        // SAFETY: function is always safe to call
+        debug_assert!(scratch.len() >= unsafe { lzfse_encode_scratch_size() });
 
-        // No overlap
-        debug_assert!(
-            src as usize >= (dst.add(dst_len) as usize)
-                || (src.add(src_len) as usize) <= dst as usize
-        );
-        let res = lzfse_encode_buffer(dst.cast(), dst_len, src.cast(), src_len, scratch);
-        debug_assert!(res <= dst_len);
+        // SAFETY: Buffers are valid for the specified lengths, and caller must ensure scratch is large enough
+        let res = unsafe {
+            lzfse_encode_buffer(
+                dst.as_mut_ptr().cast(),
+                dst.len(),
+                src.as_ptr().cast(),
+                src.len(),
+                scratch.as_mut_ptr().cast(),
+            )
+        };
+        debug_assert!(res <= dst.len());
         res
     }
 
-    unsafe fn decode(
-        dst: *mut u8,
-        dst_len: usize,
-        src: *const u8,
-        src_len: usize,
-        scratch: *mut c_void,
-    ) -> usize {
-        debug_assert!(!dst.is_null());
-        debug_assert!(!src.is_null());
+    unsafe fn decode(dst: &mut [u8], src: &[u8], scratch: &mut [u8]) -> usize {
+        // SAFETY: function is always safe to call
+        debug_assert!(scratch.len() >= unsafe { lzfse_decode_scratch_size() });
 
-        // No overlap
-        debug_assert!(
-            src as usize >= (dst.add(dst_len) as usize)
-                || (src.add(src_len) as usize) <= dst as usize
-        );
-        let res = lzfse_decode_buffer(dst.cast(), dst_len, src.cast(), src_len, scratch);
-        debug_assert!(res <= dst_len);
+        // SAFETY: Buffers are valid for the specified lengths, and caller must ensure scratch is large enough
+        let res = unsafe {
+            lzfse_decode_buffer(
+                dst.as_mut_ptr().cast(),
+                dst.len(),
+                src.as_ptr().cast(),
+                src.len(),
+                scratch.as_mut_ptr().cast(),
+            )
+        };
+        debug_assert!(res <= dst.len());
         res
     }
 }

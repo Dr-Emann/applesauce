@@ -2,7 +2,7 @@ use crate::compressor::lz;
 use libc::c_int;
 use std::ffi::c_void;
 use std::mem::MaybeUninit;
-use std::{cmp, mem, slice};
+use std::{cmp, mem};
 
 pub type Lzvn = lz::Lz<Impl>;
 
@@ -19,46 +19,46 @@ impl lz::Impl for Impl {
         )
     }
 
-    unsafe fn encode(
-        dst: *mut u8,
-        dst_len: usize,
-        src: *const u8,
-        src_len: usize,
-        scratch: *mut c_void,
-    ) -> usize {
-        debug_assert!(!dst.is_null());
-        debug_assert!(!src.is_null());
-        debug_assert!(!scratch.is_null());
+    unsafe fn encode(dst: &mut [u8], src: &[u8], scratch: &mut [u8]) -> usize {
+        // SAFETY: function is always safe to call
+        debug_assert!(scratch.len() >= unsafe { lzvn_encode_scratch_size() });
 
-        // No overlap
-        debug_assert!(
-            src as usize >= (dst.add(dst_len) as usize)
-                || (src.add(src_len) as usize) <= dst as usize
-        );
-        let res = lzvn_encode_buffer(dst, dst_len, src, src_len, scratch);
-        debug_assert!(res <= dst_len);
+        // SAFETY: Buffers are valid for the specified lengths, and caller must ensure scratch is large enough
+        let res = unsafe {
+            lzvn_encode_buffer(
+                dst.as_mut_ptr(),
+                dst.len(),
+                src.as_ptr(),
+                src.len(),
+                scratch.as_mut_ptr().cast(),
+            )
+        };
+        debug_assert!(res <= dst.len());
         res
     }
 
-    unsafe fn decode(
-        dst: *mut u8,
-        dst_len: usize,
-        src: *const u8,
-        src_len: usize,
-        _scratch: *mut c_void,
-    ) -> usize {
-        debug_assert!(!dst.is_null());
-        debug_assert!(!src.is_null());
+    unsafe fn decode(dst: &mut [u8], src: &[u8], _scratch: &mut [u8]) -> usize {
+        // SAFETY: decoder state is all numeric and safe to zero init
+        let mut state: DecoderState = unsafe { MaybeUninit::zeroed().assume_init() };
 
-        // No overlap
-        debug_assert!(
-            src as usize >= (dst.add(dst_len) as usize)
-                || (src.add(src_len) as usize) <= dst as usize
-        );
-        decode(
-            slice::from_raw_parts_mut(dst, dst_len),
-            slice::from_raw_parts(src, src_len),
-        )
+        let src_range = src.as_ptr_range();
+        state.src = src_range.start;
+        state.src_end = src_range.end;
+
+        let dst_range = dst.as_mut_ptr_range();
+        state.dst = dst_range.start;
+        state.dst_begin = dst_range.start;
+        state.dst_end = dst_range.end;
+
+        // SAFETY: state is fully initialized
+        unsafe {
+            lzvn_decode(&mut state);
+        }
+        // SAFETY: lvzn_decode will have updated the dst ptr on state,
+        //         but kept within range dst..dst_end
+        unsafe { state.dst.offset_from(dst.as_mut_ptr()) }
+            .try_into()
+            .unwrap()
     }
 }
 
@@ -100,28 +100,6 @@ extern "C" {
     ) -> usize;
 
     fn lzvn_decode(state: *mut DecoderState);
-}
-
-fn decode(dst: &mut [u8], src: &[u8]) -> usize {
-    // SAFETY: decoder state is all numeric and safe to zero init
-    let mut state: DecoderState = unsafe { MaybeUninit::zeroed().assume_init() };
-
-    let src_range = src.as_ptr_range();
-    state.src = src_range.start;
-    state.src_end = src_range.end;
-
-    let dst_range = dst.as_mut_ptr_range();
-    state.dst = dst_range.start;
-    state.dst_begin = dst_range.start;
-    state.dst_end = dst_range.end;
-
-    // SAFETY: state is fully initialized
-    unsafe {
-        lzvn_decode(&mut state);
-    }
-    // SAFETY: lvzn_decode will have updated the dst ptr on state,
-    //         but kept within range dst..dst_end
-    unsafe { state.dst.offset_from(dst.as_mut_ptr()) as usize }
 }
 
 #[test]
