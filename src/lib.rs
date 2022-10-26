@@ -342,7 +342,7 @@ impl FileCompressor {
         Ok(())
     }
 
-    fn raw_compress_into<R: Read, W: Write + Seek>(
+    fn raw_compress_into<R: Read, W: Write>(
         &mut self,
         mut r: R,
         mut w: W,
