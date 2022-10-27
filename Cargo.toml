@@ -1,5 +1,5 @@
 [package]
-name = "squashed_apple"
+name = "applesauce"
 version = "0.1.0"
 edition = "2021"
 
@@ -16,6 +16,7 @@ lzvn = ["lzfse-sys"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+crossbeam-channel = "0.5.6"
 libc = "0.2.127"
 memchr = "2.5"
 tracing = "0.1.36"

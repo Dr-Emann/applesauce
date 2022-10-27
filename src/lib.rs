@@ -3,6 +3,7 @@
 pub mod compressor;
 mod decmpfs;
 pub mod resource_fork;
+mod seq_queue;
 
 use crate::compressor::{Compressor, CompressorImpl};
 use crate::decmpfs::{CompressionType, Storage};
