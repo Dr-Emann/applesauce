@@ -233,6 +233,21 @@ pub struct FileCompressor {
     block_sizes: Vec<u32>,
 }
 
+pub trait Progress {
+    fn set_total_length(&mut self, length: u64);
+    fn set_position(&mut self, position: u64);
+}
+
+impl Progress for indicatif::ProgressBar {
+    fn set_total_length(&mut self, length: u64) {
+        indicatif::ProgressBar::set_length(self, length);
+    }
+
+    fn set_position(&mut self, position: u64) {
+        indicatif::ProgressBar::set_position(self, position);
+    }
+}
+
 impl FileCompressor {
     #[must_use]
     pub fn new(compressor: Compressor) -> Self {
@@ -245,10 +260,12 @@ impl FileCompressor {
         }
     }
 
-    #[tracing::instrument(skip(self), err)]
-    pub fn compress_path(&mut self, path: &Path) -> io::Result<()> {
+    #[tracing::instrument(skip_all, fields(path = %path.display()), err)]
+    pub fn compress_path(&mut self, path: &Path, progress: &mut impl Progress) -> io::Result<()> {
         let metadata = path.metadata()?;
         tracing::trace!(?metadata);
+
+        progress.set_total_length(metadata.len());
 
         check_compressible(path, &metadata)?;
 
@@ -267,7 +284,7 @@ impl FileCompressor {
         self.block_sizes.clear();
         let decmp_storage: Storage;
         let decmp_extra_xattr_data: &[u8];
-        match self.raw_compress_into(&*file, &mut resource_fork, file_size)? {
+        match self.raw_compress_into(&*file, &mut resource_fork, file_size, progress)? {
             RawCompressResult::SingleBlock { write_buf_len } => {
                 decmp_storage = Storage::Xattr;
                 decmp_extra_xattr_data = &self.write_buffer[..write_buf_len];
@@ -354,6 +371,7 @@ impl FileCompressor {
         mut r: R,
         mut w: W,
         expected_len: u64,
+        progress: &mut impl Progress,
     ) -> io::Result<RawCompressResult> {
         self.block_sizes.clear();
         let block_count = num_blocks(expected_len);
@@ -381,6 +399,8 @@ impl FileCompressor {
                 .compress(&mut self.write_buffer, &self.read_buffer[..n])?;
             // unwrap safe: dst_len <= write_buffer.len()
             self.block_sizes.push(dst_len.try_into().unwrap());
+
+            progress.set_position(total_read);
 
             // If the block will fit in the xattr, return a single block
             if dst_len + decmpfs::DiskHeader::SIZE < decmpfs::MAX_XATTR_SIZE {
@@ -411,6 +431,8 @@ impl FileCompressor {
                 .compress(&mut self.write_buffer, &self.read_buffer[..n])?;
             w.write_all(&self.write_buffer[..dst_len])?;
             self.block_sizes.push(dst_len.try_into().unwrap());
+
+            progress.set_position(total_read);
         }
         if total_read != expected_len {
             return Err(io::Error::new(

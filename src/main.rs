@@ -1,6 +1,8 @@
 use applesauce::compressor::Compressor;
+use applesauce::Progress;
 use cfg_if::cfg_if;
 use clap::Parser;
+use indicatif::{MultiProgress, ProgressBar};
 use rayon::prelude::*;
 use std::path::PathBuf;
 use tracing_chrome::ChromeLayerBuilder;
@@ -78,10 +80,10 @@ fn main() {
         .file("/tmp/trace.json")
         .include_args(true)
         .build();
-    let fmt_layer = tracing_subscriber::fmt::layer().with_timer(time::uptime());
+    // let fmt_layer = tracing_subscriber::fmt::layer().with_timer(time::uptime());
     tracing_subscriber::registry()
         .with(chrome_layer)
-        .with(fmt_layer)
+        // .with(fmt_layer)
         .init();
 
     let cli = {
@@ -92,6 +94,7 @@ fn main() {
 
     match cli.command {
         Commands::Compress(Compress { paths, compression }) => {
+            let progress_bars = MultiProgress::new();
             paths
                 .par_iter()
                 .flat_map(|root| {
@@ -114,11 +117,14 @@ fn main() {
                         if !entry.file_type().is_file() {
                             return;
                         }
+                        let mut pb = progress_bars.add(
+                            ProgressBar::new(10).with_prefix(entry.path().display().to_string()),
+                        );
                         let full_path = root.join(entry.path());
 
-                        match compressor.compress_path(&full_path) {
+                        match compressor.compress_path(&full_path, &mut pb) {
                             Ok(()) => {
-                                tracing::info!("successfully compressed {}", full_path.display())
+                                tracing::debug!("successfully compressed {}", full_path.display())
                             }
                             Err(e) => {
                                 tracing::error!("Error compressing {}: {}", full_path.display(), e)

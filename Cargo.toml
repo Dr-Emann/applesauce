@@ -24,6 +24,7 @@ memchr = "2.5"
 rayon = "1.5.3"
 tracing = "0.1.36"
 tracing-chrome = "0.6.0"
+indicatif = "0.17.1"
 tracing-subscriber = { version = "0.3.16", features = ["fmt"] }
 walkdir = "2.3"
 
