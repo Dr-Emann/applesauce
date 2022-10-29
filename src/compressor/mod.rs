@@ -1,5 +1,8 @@
+#[cfg(feature = "lzfse")]
 use crate::compressor::lzfse::Lzfse;
+#[cfg(feature = "lzvn")]
 use crate::compressor::lzvn::Lzvn;
+#[cfg(feature = "zlib")]
 use crate::compressor::zlib::Zlib;
 use std::io;
 
@@ -46,7 +49,7 @@ impl Compressor {
 
     #[must_use]
     pub fn kind(&self) -> Kind {
-        match &self.0 {
+        match self.0 {
             #[cfg(feature = "zlib")]
             Data::Zlib(_) => Kind::Zlib,
             #[cfg(feature = "lzfse")]
@@ -68,35 +71,35 @@ enum Data {
 
 impl CompressorImpl for Compressor {
     fn blocks_start(&self, block_count: u64) -> u64 {
-        match &self.0 {
+        match self.0 {
             #[cfg(feature = "zlib")]
-            Data::Zlib(i) => i.blocks_start(block_count),
+            Data::Zlib(ref i) => i.blocks_start(block_count),
             #[cfg(feature = "lzfse")]
-            Data::Lzfse(i) => i.blocks_start(block_count),
+            Data::Lzfse(ref i) => i.blocks_start(block_count),
             #[cfg(feature = "lzvn")]
-            Data::Lzvn(i) => i.blocks_start(block_count),
+            Data::Lzvn(ref i) => i.blocks_start(block_count),
         }
     }
 
     fn compress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
-        match &mut self.0 {
+        match self.0 {
             #[cfg(feature = "zlib")]
-            Data::Zlib(i) => i.compress(dst, src),
+            Data::Zlib(ref mut i) => i.compress(dst, src),
             #[cfg(feature = "lzfse")]
-            Data::Lzfse(i) => i.compress(dst, src),
+            Data::Lzfse(ref mut i) => i.compress(dst, src),
             #[cfg(feature = "lzvn")]
-            Data::Lzvn(i) => i.compress(dst, src),
+            Data::Lzvn(ref mut i) => i.compress(dst, src),
         }
     }
 
     fn decompress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
-        match &mut self.0 {
+        match self.0 {
             #[cfg(feature = "zlib")]
-            Data::Zlib(i) => i.decompress(dst, src),
+            Data::Zlib(ref mut i) => i.decompress(dst, src),
             #[cfg(feature = "lzfse")]
-            Data::Lzfse(i) => i.decompress(dst, src),
+            Data::Lzfse(ref mut i) => i.decompress(dst, src),
             #[cfg(feature = "lzvn")]
-            Data::Lzvn(i) => i.decompress(dst, src),
+            Data::Lzvn(ref mut i) => i.decompress(dst, src),
         }
     }
 
@@ -105,18 +108,18 @@ impl CompressorImpl for Compressor {
         writer: W,
         block_sizes: &[u32],
     ) -> io::Result<()> {
-        match &mut self.0 {
+        match self.0 {
             #[cfg(feature = "zlib")]
-            Data::Zlib(i) => i.finish(writer, block_sizes),
+            Data::Zlib(ref mut i) => i.finish(writer, block_sizes),
             #[cfg(feature = "lzfse")]
-            Data::Lzfse(i) => i.finish(writer, block_sizes),
+            Data::Lzfse(ref mut i) => i.finish(writer, block_sizes),
             #[cfg(feature = "lzvn")]
-            Data::Lzvn(i) => i.finish(writer, block_sizes),
+            Data::Lzvn(ref mut i) => i.finish(writer, block_sizes),
         }
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, clap::ValueEnum)]
 pub enum Kind {
     Zlib,
     Lzvn,

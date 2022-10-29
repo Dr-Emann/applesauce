@@ -53,6 +53,7 @@ fn num_blocks(size: u64) -> u64 {
     (size + (BLOCK_SIZE as u64 - 1)) / (BLOCK_SIZE as u64)
 }
 
+#[tracing::instrument(skip_all)]
 fn check_compressible(path: &Path, metadata: &Metadata) -> io::Result<()> {
     if !metadata.is_file() {
         return Err(io::Error::new(io::ErrorKind::Other, "not a file"));
@@ -218,7 +219,7 @@ impl Drop for ForceWritableFile {
         if let Some(permissions) = self.permissions.clone() {
             let res = self.file.set_permissions(permissions);
             if let Err(e) = res {
-                eprintln!("Error resetting permissions {}", e);
+                tracing::error!("unable to reset permissions: {}", e);
             }
         }
     }
@@ -244,8 +245,10 @@ impl FileCompressor {
         }
     }
 
+    #[tracing::instrument(skip(self), err)]
     pub fn compress_path(&mut self, path: &Path) -> io::Result<()> {
         let metadata = path.metadata()?;
+        tracing::trace!(?metadata);
 
         check_compressible(path, &metadata)?;
 
@@ -336,9 +339,12 @@ impl FileCompressor {
             },
         ];
         // SAFETY: fd is valid, times points to an array of 2 timespec values
-        unsafe {
-            libc::futimens(file.as_raw_fd(), times.as_ptr());
+        let rc = unsafe { libc::futimens(file.as_raw_fd(), times.as_ptr()) };
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
         }
+
+        file.sync_all()?;
 
         Ok(())
     }
@@ -353,7 +359,11 @@ impl FileCompressor {
         let block_count = num_blocks(expected_len);
         let mut total_read: u64 = 0;
 
+        let block_span = tracing::debug_span!("compressing block");
+
         if block_count <= 1 {
+            let _enter = block_span.enter();
+
             let n = try_read_all(&mut r, &mut self.read_buffer)?;
             total_read += u64::try_from(n).unwrap();
             if total_read != expected_len {
@@ -374,6 +384,7 @@ impl FileCompressor {
 
             // If the block will fit in the xattr, return a single block
             if dst_len + decmpfs::DiskHeader::SIZE < decmpfs::MAX_XATTR_SIZE {
+                tracing::debug!("compressible inside xattr");
                 return Ok(RawCompressResult::SingleBlock {
                     write_buf_len: dst_len,
                 });
@@ -381,6 +392,8 @@ impl FileCompressor {
         }
 
         loop {
+            let _enter = block_span.enter();
+
             let n = try_read_all(&mut r, &mut self.read_buffer)?;
             if n == 0 {
                 break;
