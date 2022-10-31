@@ -17,13 +17,12 @@ mod zlib;
 
 pub(crate) trait CompressorImpl {
     /// The offset to start data at, for the specified number of blocks
-    fn blocks_start(&self, block_count: u64) -> u64;
+    fn blocks_start(block_count: u64) -> u64;
 
     fn compress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize>;
     fn decompress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize>;
 
-    fn finish<W: io::Write + io::Seek>(&mut self, writer: W, block_sizes: &[u32])
-        -> io::Result<()>;
+    fn finish<W: io::Write + io::Seek>(writer: W, block_sizes: &[u32]) -> io::Result<()>;
 }
 
 pub struct Compressor(Data);
@@ -69,19 +68,12 @@ enum Data {
     Lzvn(Lzvn),
 }
 
-impl CompressorImpl for Compressor {
-    fn blocks_start(&self, block_count: u64) -> u64 {
-        match self.0 {
-            #[cfg(feature = "zlib")]
-            Data::Zlib(ref i) => i.blocks_start(block_count),
-            #[cfg(feature = "lzfse")]
-            Data::Lzfse(ref i) => i.blocks_start(block_count),
-            #[cfg(feature = "lzvn")]
-            Data::Lzvn(ref i) => i.blocks_start(block_count),
-        }
+impl Compressor {
+    pub fn blocks_start(&self, block_count: u64) -> u64 {
+        self.kind().blocks_start(block_count)
     }
 
-    fn compress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
+    pub fn compress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
         match self.0 {
             #[cfg(feature = "zlib")]
             Data::Zlib(ref mut i) => i.compress(dst, src),
@@ -92,7 +84,7 @@ impl CompressorImpl for Compressor {
         }
     }
 
-    fn decompress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
+    pub fn decompress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
         match self.0 {
             #[cfg(feature = "zlib")]
             Data::Zlib(ref mut i) => i.decompress(dst, src),
@@ -103,23 +95,16 @@ impl CompressorImpl for Compressor {
         }
     }
 
-    fn finish<W: io::Write + io::Seek>(
+    pub fn finish<W: io::Write + io::Seek>(
         &mut self,
         writer: W,
         block_sizes: &[u32],
     ) -> io::Result<()> {
-        match self.0 {
-            #[cfg(feature = "zlib")]
-            Data::Zlib(ref mut i) => i.finish(writer, block_sizes),
-            #[cfg(feature = "lzfse")]
-            Data::Lzfse(ref mut i) => i.finish(writer, block_sizes),
-            #[cfg(feature = "lzvn")]
-            Data::Lzvn(ref mut i) => i.finish(writer, block_sizes),
-        }
+        self.kind().finish(writer, block_sizes)
     }
 }
 
-#[derive(Debug, Copy, Clone, clap::ValueEnum)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Kind {
     Zlib,
     Lzvn,
@@ -149,6 +134,28 @@ impl Kind {
             _ => return None,
         };
         Some(Compressor(data))
+    }
+
+    pub fn blocks_start(self, block_count: u64) -> u64 {
+        match self {
+            #[cfg(feature = "zlib")]
+            Kind::Zlib => Zlib::blocks_start(block_count),
+            #[cfg(feature = "lzvn")]
+            Kind::Lzvn => Lzvn::blocks_start(block_count),
+            #[cfg(feature = "lzfse")]
+            Kind::Lzfse => Lzfse::blocks_start(block_count),
+        }
+    }
+
+    pub fn finish<W: io::Write + io::Seek>(self, writer: W, block_sizes: &[u32]) -> io::Result<()> {
+        match self {
+            #[cfg(feature = "zlib")]
+            Kind::Zlib => Zlib::finish(writer, block_sizes),
+            #[cfg(feature = "lzvn")]
+            Kind::Lzvn => Lzvn::finish(writer, block_sizes),
+            #[cfg(feature = "lzfse")]
+            Kind::Lzfse => Lzfse::finish(writer, block_sizes),
+        }
     }
 }
 

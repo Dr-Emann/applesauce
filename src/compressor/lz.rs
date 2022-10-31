@@ -27,7 +27,7 @@ impl<I: Impl> Lz<I> {
 }
 
 impl<I: Impl> CompressorImpl for Lz<I> {
-    fn blocks_start(&self, block_count: u64) -> u64 {
+    fn blocks_start(block_count: u64) -> u64 {
         (block_count + 1) * mem::size_of::<u32>() as u64
     }
 
@@ -70,13 +70,9 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         Ok(len)
     }
 
-    fn finish<W: io::Write + io::Seek>(
-        &mut self,
-        mut writer: W,
-        block_sizes: &[u32],
-    ) -> io::Result<()> {
+    fn finish<W: io::Write + io::Seek>(mut writer: W, block_sizes: &[u32]) -> io::Result<()> {
         let block_count = u32::try_from(block_sizes.len()).unwrap();
-        let mut offset = u32::try_from(self.blocks_start(block_count.into())).unwrap();
+        let mut offset = u32::try_from(Self::blocks_start(block_count.into())).unwrap();
 
         writer.seek(SeekFrom::Start(0))?;
 

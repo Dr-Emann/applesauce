@@ -3,19 +3,20 @@ use std::ffi::CStr;
 use std::{io, mem};
 
 pub const MAX_XATTR_SIZE: usize = 3802;
+pub const MAX_XATTR_DATA_SIZE: usize = MAX_XATTR_SIZE - DiskHeader::SIZE;
 pub const MAGIC: u32 = u32::from_be_bytes(*b"cmpf");
 
 pub const ZLIB_BLOCK_TABLE_START: u64 = 0x104;
 
 pub const XATTR_NAME: &CStr = crate::cstr!("com.apple.decmpfs");
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Storage {
     Xattr,
     ResourceFork,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct CompressionType {
     pub compression: compressor::Kind,
     pub storage: Storage,

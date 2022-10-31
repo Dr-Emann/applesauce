@@ -8,7 +8,7 @@ use std::{io, mem};
 pub struct Zlib;
 
 impl super::CompressorImpl for Zlib {
-    fn blocks_start(&self, block_count: u64) -> u64 {
+    fn blocks_start(block_count: u64) -> u64 {
         ZLIB_BLOCK_TABLE_START + mem::size_of::<u32>() as u64 + block_count * ZlibBlockInfo::SIZE
     }
 
@@ -36,11 +36,7 @@ impl super::CompressorImpl for Zlib {
         Ok(bytes_read)
     }
 
-    fn finish<W: io::Write + io::Seek>(
-        &mut self,
-        mut writer: W,
-        block_sizes: &[u32],
-    ) -> io::Result<()> {
+    fn finish<W: io::Write + io::Seek>(mut writer: W, block_sizes: &[u32]) -> io::Result<()> {
         let block_count =
             u32::try_from(block_sizes.len()).map_err(|_| io::ErrorKind::InvalidInput)?;
         let compressed_data_size =
@@ -58,7 +54,7 @@ impl super::CompressorImpl for Zlib {
 
         writer.write_all(&u32::to_le_bytes(block_count))?;
         let mut current_offset =
-            u32::try_from(self.blocks_start(block_count.into()) - ZLIB_BLOCK_TABLE_START).unwrap();
+            u32::try_from(Self::blocks_start(block_count.into()) - ZLIB_BLOCK_TABLE_START).unwrap();
         for &size in block_sizes {
             let block_info = ZlibBlockInfo {
                 offset: current_offset,
@@ -72,7 +68,7 @@ impl super::CompressorImpl for Zlib {
         }
         debug_assert_eq!(
             writer.stream_position()?,
-            self.blocks_start(block_count.into())
+            Self::blocks_start(block_count.into())
         );
         Ok(())
     }

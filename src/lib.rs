@@ -4,6 +4,7 @@ pub mod compressor;
 mod decmpfs;
 pub mod resource_fork;
 mod seq_queue;
+mod theads;
 
 use crate::compressor::{Compressor, CompressorImpl};
 use crate::decmpfs::{CompressionType, Storage};
@@ -147,6 +148,43 @@ fn vol_supports_compression_cap(mnt_root: &CStr) -> io::Result<bool> {
     Ok(vol_attrs.vol_attrs.valid[IDX] & vol_attrs.vol_attrs.capabilities[IDX] & MASK != 0)
 }
 
+fn reset_times(file: &File, metadata: &Metadata) -> io::Result<()> {
+    let times: [libc::timespec; 2] = [
+        libc::timespec {
+            tv_sec: metadata.atime(),
+            tv_nsec: metadata.atime_nsec(),
+        },
+        libc::timespec {
+            tv_sec: metadata.mtime(),
+            tv_nsec: metadata.mtime_nsec(),
+        },
+    ];
+    // SAFETY: fd is valid, times points to an array of 2 timespec values
+    let rc = unsafe { libc::futimens(file.as_raw_fd(), times.as_ptr()) };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+fn remove_xattr(file: &File, xattr_name: &CStr) -> io::Result<()> {
+    let rc = unsafe {
+        libc::fremovexattr(
+            file.as_raw_fd(),
+            xattr_name.as_ptr(),
+            libc::XATTR_SHOWCOMPRESSION,
+        )
+    };
+    if rc == -1 {
+        let last_error = io::Error::last_os_error();
+        if last_error.raw_os_error() != Some(libc::ENOATTR) {
+            return Err(last_error);
+        };
+    }
+    Ok(())
+}
+
 fn has_xattr(path: &CStr, xattr_name: &CStr) -> io::Result<bool> {
     // SAFETY:
     // path/xattr_name are valid pointers and are null terminated
@@ -170,6 +208,39 @@ fn has_xattr(path: &CStr, xattr_name: &CStr) -> io::Result<bool> {
         };
     }
     Ok(true)
+}
+
+fn set_xattr(file: &File, xattr_name: &CStr, data: &[u8], offset: u32) -> io::Result<()> {
+    // SAFETY:
+    // fd is valid
+    // xattr name is valid and null terminated
+    // value is valid, writable, and initialized up to `.len()` bytes
+    let rc = unsafe {
+        libc::fsetxattr(
+            file.as_raw_fd(),
+            xattr_name.as_ptr(),
+            data.as_ptr().cast(),
+            data.len(),
+            offset,
+            libc::XATTR_SHOWCOMPRESSION,
+        )
+    };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+fn set_flags(file: &File, flags: libc::c_uint) -> io::Result<()> {
+    let rc =
+        // SAFETY: fd is valid
+        unsafe { libc::fchflags(file.as_raw_fd(), flags) };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
 }
 
 struct ForceWritableFile {
@@ -270,13 +341,13 @@ impl FileCompressor {
         check_compressible(path, &metadata)?;
 
         let file = ForceWritableFile::open(path, &metadata)?;
-        let mut resource_fork = ResourceFork::new(&file);
 
         let file_size = metadata.len();
         let block_count: u32 = num_blocks(file_size)
             .try_into()
             .map_err(|_| io::ErrorKind::InvalidInput)?;
 
+        let mut resource_fork = ResourceFork::new(&file);
         resource_fork.seek(SeekFrom::Start(
             self.compressor.blocks_start(block_count.into()),
         ))?;
@@ -306,7 +377,7 @@ impl FileCompressor {
         self.decomp_xattr_val_buf.clear();
         header.write_into(&mut self.decomp_xattr_val_buf)?;
 
-        if decmp_extra_xattr_data.is_empty() {
+        if decmp_storage == Storage::ResourceFork {
             // Wrap in a BufWriter, since finish does several writes
             let mut resource_fork = BufWriter::new(resource_fork);
             self.compressor
@@ -345,21 +416,7 @@ impl FileCompressor {
             return Err(e);
         }
 
-        let times: [libc::timespec; 2] = [
-            libc::timespec {
-                tv_sec: metadata.atime(),
-                tv_nsec: metadata.atime_nsec(),
-            },
-            libc::timespec {
-                tv_sec: metadata.mtime(),
-                tv_nsec: metadata.mtime_nsec(),
-            },
-        ];
-        // SAFETY: fd is valid, times points to an array of 2 timespec values
-        let rc = unsafe { libc::futimens(file.as_raw_fd(), times.as_ptr()) };
-        if rc != 0 {
-            return Err(io::Error::last_os_error());
-        }
+        reset_times(&file, &metadata)?;
 
         file.sync_all()?;
 

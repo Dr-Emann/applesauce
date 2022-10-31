@@ -41,20 +41,50 @@ impl<T> Receiver<T> {
     }
 }
 
-pub struct Iter<T> {
+pub struct Iter<'a, T> {
+    receiver: &'a Receiver<T>,
+}
+
+pub struct IntoIter<T> {
     receiver: Receiver<T>,
 }
 
-impl<T> IntoIterator for Receiver<T> {
+impl<'a, T> IntoIterator for &'a Receiver<T> {
     type Item = T;
-    type IntoIter = Iter<T>;
+    type IntoIter = Iter<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
         Iter { receiver: self }
     }
 }
 
-impl<T> Iterator for Iter<T> {
+impl<'a, T> IntoIterator for &'a mut Receiver<T> {
+    type Item = T;
+    type IntoIter = Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Iter { receiver: self }
+    }
+}
+
+impl<T> IntoIterator for Receiver<T> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter { receiver: self }
+    }
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.receiver.recv().ok()
+    }
+}
+
+impl<T> Iterator for IntoIter<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
