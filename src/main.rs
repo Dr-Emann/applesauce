@@ -80,10 +80,10 @@ fn main() {
         .file("/tmp/trace.json")
         .include_args(true)
         .build();
-    // let fmt_layer = tracing_subscriber::fmt::layer().with_timer(time::uptime());
+    let fmt_layer = tracing_subscriber::fmt::layer().with_timer(time::uptime());
     tracing_subscriber::registry()
         .with(chrome_layer)
-        // .with(fmt_layer)
+        .with(fmt_layer)
         .init();
 
     let cli = {
@@ -95,43 +95,37 @@ fn main() {
     match cli.command {
         Commands::Compress(Compress { paths, compression }) => {
             let progress_bars = MultiProgress::new();
+            let mut compressor = applesauce::FileCompressor::new(compression.compressor());
             paths
-                .par_iter()
-                .flat_map(|root| {
-                    WalkDir::new(&root)
-                        .into_iter()
-                        .par_bridge()
-                        .map(move |x| (x, root))
-                })
-                .for_each_init(
-                    || applesauce::FileCompressor::new(compression.compressor()),
-                    |compressor, (entry, root)| {
-                        let entry = match entry {
-                            Ok(entry) => entry,
-                            Err(e) => {
-                                tracing::error!("{e}");
-                                return;
-                            }
-                        };
-
-                        if !entry.file_type().is_file() {
+                .iter()
+                .flat_map(|root| WalkDir::new(&root).into_iter().map(move |x| (x, root)))
+                .for_each(|(entry, root)| {
+                    let entry = match entry {
+                        Ok(entry) => entry,
+                        Err(e) => {
+                            tracing::error!("{e}");
                             return;
                         }
-                        let mut pb = progress_bars.add(
-                            ProgressBar::new(10).with_prefix(entry.path().display().to_string()),
-                        );
-                        let full_path = root.join(entry.path());
+                    };
 
-                        match compressor.compress_path(&full_path, &mut pb) {
-                            Ok(()) => {
-                                tracing::debug!("successfully compressed {}", full_path.display())
-                            }
-                            Err(e) => {
-                                tracing::error!("Error compressing {}: {}", full_path.display(), e)
-                            }
+                    if !entry.file_type().is_file() {
+                        return;
+                    }
+                    let mut pb = progress_bars
+                        .add(ProgressBar::new(10).with_prefix(entry.path().display().to_string()));
+                    let full_path = root.join(entry.path());
+
+                    match compressor.compress_path(&full_path, &mut pb) {
+                        Ok(()) => {
+                            tracing::debug!("successfully compressed {}", full_path.display())
                         }
-                    },
-                );
+                        Err(e) => {
+                            tracing::error!("Error compressing {}: {}", full_path.display(), e)
+                        }
+                    }
+                });
+            drop(compressor);
+            tracing::info!("Finished compressing");
         }
     }
 }

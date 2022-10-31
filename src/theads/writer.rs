@@ -3,16 +3,20 @@ use crate::resource_fork::ResourceFork;
 use crate::theads::ThreadJoiner;
 use crate::{
     compressor, decmpfs, num_blocks, remove_xattr, reset_times, resource_fork, seq_queue,
-    set_flags, set_xattr,
+    set_flags, set_xattr, ForceWritableFile,
 };
-use std::fs::{File, Metadata};
+use std::fs::Metadata;
 use std::io::{BufWriter, Seek, SeekFrom, Write};
 use std::os::macos::fs::MetadataExt;
+use std::path::Path;
 use std::sync::Arc;
 use std::{io, thread};
 
+pub type Sender = crossbeam_channel::Sender<WorkItem>;
+
 pub struct WorkItem {
-    pub file: Arc<File>,
+    pub path: Arc<Path>,
+    pub(crate) file: Arc<ForceWritableFile>,
     pub blocks: seq_queue::Receiver<io::Result<Vec<u8>>>,
     pub metadata: Metadata,
 }
@@ -20,7 +24,7 @@ pub struct WorkItem {
 pub struct WriterThreads {
     // Order is important: Drop happens top to bottom, drop the sender before trying to join the threads
     tx: crossbeam_channel::Sender<WorkItem>,
-    joiner: ThreadJoiner,
+    _joiner: ThreadJoiner,
 }
 
 impl WriterThreads {
@@ -37,12 +41,12 @@ impl WriterThreads {
 
         Self {
             tx,
-            joiner: ThreadJoiner::new(threads),
+            _joiner: ThreadJoiner::new(threads),
         }
     }
 
-    pub fn submit(&self, item: WorkItem) -> Result<(), crossbeam_channel::SendError<WorkItem>> {
-        self.tx.send(item)
+    pub fn chan(&self) -> &Sender {
+        &self.tx
     }
 }
 
@@ -66,11 +70,13 @@ impl Writer {
         }
     }
 
-    fn write_blocks(
+    fn write_blocks<W: Write>(
         &mut self,
-        resource_fork: &mut ResourceFork<'_>,
-        blocks: &seq_queue::Receiver<io::Result<Vec<u8>>>,
+        mut writer: W,
+        blocks: seq_queue::Receiver<io::Result<Vec<u8>>>,
     ) -> io::Result<WriteDest> {
+        let block_span = tracing::debug_span!("writing block");
+
         let block1 = match blocks.recv() {
             Ok(block) => block?,
             Err(_) => return Ok(WriteDest::Xattr { data: Vec::new() }),
@@ -79,27 +85,35 @@ impl Writer {
             Ok(block) => block?,
             Err(_) => {
                 // no second block
-                if block1.len() <= decmpfs::MAX_XATTR_DATA_SIZE {
+                return if block1.len() <= decmpfs::MAX_XATTR_DATA_SIZE {
                     tracing::debug!("compressible inside xattr");
-                    return Ok(WriteDest::Xattr { data: block1 });
+                    Ok(WriteDest::Xattr { data: block1 })
                 } else {
+                    let _enter = block_span.enter();
                     self.block_sizes.push(block1.len().try_into().unwrap());
-                    resource_fork.write_all(&block1)?;
-                    return Ok(WriteDest::BlocksWritten);
-                }
+                    writer.write_all(&block1)?;
+                    Ok(WriteDest::BlocksWritten)
+                };
             }
         };
-        self.block_sizes.push(block1.len().try_into().unwrap());
-        resource_fork.write_all(&block1)?;
-        self.block_sizes.push(block2.len().try_into().unwrap());
-        resource_fork.write_all(&block2)?;
+        {
+            let _enter = block_span.enter();
+            self.block_sizes.push(block1.len().try_into().unwrap());
+            writer.write_all(&block1)?;
+        }
+        {
+            let _enter = block_span.enter();
+            self.block_sizes.push(block2.len().try_into().unwrap());
+            writer.write_all(&block2)?;
+        }
         drop((block1, block2));
 
         for block in blocks {
             let block = block?;
+            let _enter = block_span.enter();
 
             self.block_sizes.push(block.len().try_into().unwrap());
-            resource_fork.write_all(&block)?;
+            writer.write_all(&block)?;
         }
         Ok(WriteDest::BlocksWritten)
     }
@@ -111,7 +125,7 @@ impl Writer {
         self.block_sizes.clear();
         self.block_sizes.reserve(block_count.try_into().unwrap());
 
-        let mut resource_fork = ResourceFork::new(&item.file);
+        let mut resource_fork = BufWriter::new(ResourceFork::new(&item.file));
         resource_fork
             .seek(SeekFrom::Start(
                 self.compressor_kind.blocks_start(block_count.into()),
@@ -119,7 +133,7 @@ impl Writer {
             .unwrap();
 
         let res = self
-            .write_blocks(&mut resource_fork, &item.blocks)
+            .write_blocks(&mut resource_fork, item.blocks)
             .and_then(|write_dest| {
                 let (storage, extra_data) = match write_dest {
                     WriteDest::Xattr { data } => (decmpfs::Storage::Xattr, data),
@@ -139,10 +153,10 @@ impl Writer {
                 header.write_into(&mut self.decomp_xattr_val_buf)?;
 
                 if storage == decmpfs::Storage::ResourceFork {
-                    let mut resource_fork = BufWriter::new(resource_fork);
                     self.compressor_kind
                         .finish(&mut resource_fork, &self.block_sizes)?;
                     resource_fork.flush()?;
+                    drop(resource_fork);
                 } else {
                     self.decomp_xattr_val_buf.extend_from_slice(&extra_data);
                 }
@@ -161,6 +175,7 @@ impl Writer {
             .and_then(|()| set_flags(&item.file, item.metadata.st_flags() | libc::UF_COMPRESSED));
 
         if let Err(e) = res {
+            let _enter = tracing::error_span!("removing xattrs").entered();
             tracing::error!("error while writing compressed file: {}", e);
             if let Err(e) = remove_xattr(&item.file, decmpfs::XATTR_NAME) {
                 tracing::error!("error while removing decmpfs header: {}", e);
@@ -173,15 +188,20 @@ impl Writer {
         if let Err(e) = reset_times(&item.file, &item.metadata) {
             tracing::error!("unable to reset file times: {}", e);
         }
-        if let Err(e) = item.file.sync_all() {
-            tracing::error!("error syncing file: {}", e);
+        {
+            let _enter = tracing::debug_span!("file sync").entered();
+            if let Err(e) = item.file.sync_all() {
+                tracing::error!("error syncing file: {}", e);
+            }
         }
     }
 }
 
 fn thread_impl(compressor_kind: compressor::Kind, rx: crossbeam_channel::Receiver<WorkItem>) {
+    let _entered = tracing::debug_span!("writer thread").entered();
     let mut writer = Writer::new(compressor_kind);
     for item in rx {
+        let _entered = tracing::info_span!("writing file", path=%item.path.display()).entered();
         writer.handle_work_item(item);
     }
 }

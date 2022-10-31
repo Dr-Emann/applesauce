@@ -31,6 +31,7 @@ macro_rules! cstr {
     }};
 }
 
+use crate::theads::BackgroundThreads;
 pub(crate) use cstr;
 
 const BLOCK_SIZE: usize = 0x10000;
@@ -148,6 +149,7 @@ fn vol_supports_compression_cap(mnt_root: &CStr) -> io::Result<bool> {
     Ok(vol_attrs.vol_attrs.valid[IDX] & vol_attrs.vol_attrs.capabilities[IDX] & MASK != 0)
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 fn reset_times(file: &File, metadata: &Metadata) -> io::Result<()> {
     let times: [libc::timespec; 2] = [
         libc::timespec {
@@ -297,6 +299,7 @@ impl Drop for ForceWritableFile {
 }
 
 pub struct FileCompressor {
+    bg_threads: BackgroundThreads,
     compressor: Compressor,
     decomp_xattr_val_buf: Vec<u8>,
     read_buffer: Box<[u8]>,
@@ -323,6 +326,7 @@ impl FileCompressor {
     #[must_use]
     pub fn new(compressor: Compressor) -> Self {
         Self {
+            bg_threads: BackgroundThreads::new(compressor.kind()),
             compressor,
             decomp_xattr_val_buf: Vec::with_capacity(decmpfs::DiskHeader::SIZE),
             read_buffer: vec![0; BLOCK_SIZE].into_boxed_slice(),
@@ -333,93 +337,7 @@ impl FileCompressor {
 
     #[tracing::instrument(skip_all, fields(path = %path.display()), err)]
     pub fn compress_path(&mut self, path: &Path, progress: &mut impl Progress) -> io::Result<()> {
-        let metadata = path.metadata()?;
-        tracing::trace!(?metadata);
-
-        progress.set_total_length(metadata.len());
-
-        check_compressible(path, &metadata)?;
-
-        let file = ForceWritableFile::open(path, &metadata)?;
-
-        let file_size = metadata.len();
-        let block_count: u32 = num_blocks(file_size)
-            .try_into()
-            .map_err(|_| io::ErrorKind::InvalidInput)?;
-
-        let mut resource_fork = ResourceFork::new(&file);
-        resource_fork.seek(SeekFrom::Start(
-            self.compressor.blocks_start(block_count.into()),
-        ))?;
-
-        self.block_sizes.clear();
-        let decmp_storage: Storage;
-        let decmp_extra_xattr_data: &[u8];
-        match self.raw_compress_into(&*file, &mut resource_fork, file_size, progress)? {
-            RawCompressResult::SingleBlock { write_buf_len } => {
-                decmp_storage = Storage::Xattr;
-                decmp_extra_xattr_data = &self.write_buffer[..write_buf_len];
-            }
-            RawCompressResult::BlocksWritten => {
-                decmp_storage = Storage::ResourceFork;
-                decmp_extra_xattr_data = &[];
-            }
-        }
-        let compression_type = CompressionType {
-            compression: self.compressor.kind(),
-            storage: decmp_storage,
-        };
-        let header = decmpfs::DiskHeader {
-            compression_type: compression_type.raw_type(),
-            uncompressed_size: file_size,
-        };
-
-        self.decomp_xattr_val_buf.clear();
-        header.write_into(&mut self.decomp_xattr_val_buf)?;
-
-        if decmp_storage == Storage::ResourceFork {
-            // Wrap in a BufWriter, since finish does several writes
-            let mut resource_fork = BufWriter::new(resource_fork);
-            self.compressor
-                .finish(&mut resource_fork, &self.block_sizes)?;
-            resource_fork.flush()?;
-        } else {
-            self.decomp_xattr_val_buf
-                .extend_from_slice(decmp_extra_xattr_data);
-        }
-
-        // SAFETY:
-        // fd is valid
-        // xattr name is valid and null terminated
-        // value is valid, writable, and initialized up to `.len()` bytes
-        let rc = unsafe {
-            libc::fsetxattr(
-                file.as_raw_fd(),
-                decmpfs::XATTR_NAME.as_ptr(),
-                self.decomp_xattr_val_buf.as_ptr().cast(),
-                self.decomp_xattr_val_buf.len(),
-                0,
-                libc::XATTR_SHOWCOMPRESSION,
-            )
-        };
-        if rc != 0 {
-            return Err(io::Error::last_os_error());
-        }
-        file.set_len(0)?;
-
-        let rc =
-            // SAFETY: fd is valid
-            unsafe { libc::fchflags(file.as_raw_fd(), metadata.st_flags() | libc::UF_COMPRESSED) };
-        if rc < 0 {
-            let e = io::Error::last_os_error();
-            // TODO: Roll back better
-            return Err(e);
-        }
-
-        reset_times(&file, &metadata)?;
-
-        file.sync_all()?;
-
+        self.bg_threads.submit(path);
         Ok(())
     }
 
@@ -507,9 +425,15 @@ enum RawCompressResult {
 }
 
 fn try_read_all<R: Read>(mut r: R, buf: &mut [u8]) -> io::Result<usize> {
+    let bulk_read_span = tracing::trace_span!(
+        "try_read_all",
+        len = buf.len(),
+        read_len = tracing::field::Empty,
+    );
     let full_len = buf.len();
     let mut remaining = buf;
     loop {
+        let _enter = bulk_read_span.enter();
         let n = match r.read(remaining) {
             Ok(n) => n,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
@@ -523,7 +447,10 @@ fn try_read_all<R: Read>(mut r: R, buf: &mut [u8]) -> io::Result<usize> {
             return Ok(full_len);
         }
     }
-    Ok(full_len - remaining.len())
+    let read_len = full_len - remaining.len();
+
+    bulk_read_span.record("read_len", read_len);
+    Ok(read_len)
 }
 
 fn checked_add_signed(x: u64, i: i64) -> Option<u64> {

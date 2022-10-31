@@ -1,11 +1,15 @@
-use crate::compressor::CompressorImpl;
 use crate::theads::ThreadJoiner;
 use crate::{compressor, seq_queue, BLOCK_SIZE};
-use std::thread;
+use std::path::Path;
+use std::sync::Arc;
+use std::{io, thread};
+
+pub type Sender = crossbeam_channel::Sender<WorkItem>;
 
 pub struct WorkItem {
-    data: Vec<u8>,
-    slot: seq_queue::Slot<Vec<u8>>,
+    pub path: Arc<Path>,
+    pub data: Vec<u8>,
+    pub slot: seq_queue::Slot<io::Result<Vec<u8>>>,
 }
 
 pub struct CompressionThreads {
@@ -18,7 +22,7 @@ impl CompressionThreads {
     pub fn new(compressor_kind: compressor::Kind, count: usize) -> Self {
         assert!(count > 0);
 
-        let (tx, rx) = crossbeam_channel::bounded(1);
+        let (tx, rx) = crossbeam_channel::bounded(8);
         let threads: Vec<_> = (0..count)
             .map(|_| {
                 let rx = rx.clone();
@@ -32,18 +36,22 @@ impl CompressionThreads {
         }
     }
 
-    pub fn submit(&self, item: WorkItem) -> Result<(), crossbeam_channel::SendError<WorkItem>> {
-        self.tx.send(item)
+    pub fn chan(&self) -> &Sender {
+        &self.tx
     }
 }
 
 fn thread_impl(compressor_kind: compressor::Kind, rx: crossbeam_channel::Receiver<WorkItem>) {
+    let _entered = tracing::debug_span!("compressing thread").entered();
     let mut compressor = compressor_kind.compressor().unwrap();
+    let mut buf = vec![0; BLOCK_SIZE + 1024];
 
     for item in rx {
-        let mut dst = vec![0; BLOCK_SIZE + 1024];
-        let size = compressor.compress(&mut dst, &item.data).unwrap();
-        dst.truncate(size);
-        item.slot.finish(dst).unwrap();
+        let _entered =
+            tracing::info_span!("compressing block", path=%item.path.display()).entered();
+        let size = compressor.compress(&mut buf, &item.data).unwrap();
+        if let Err(e) = item.slot.finish(Ok(buf[..size].to_vec())) {
+            tracing::error!("unable to finish slot: {}", e);
+        }
     }
 }
