@@ -50,8 +50,9 @@ fn thread_impl(compressor_kind: compressor::Kind, rx: crossbeam_channel::Receive
         let _entered =
             tracing::info_span!("compressing block", path=%item.path.display()).entered();
         let size = compressor.compress(&mut buf, &item.data).unwrap();
-        if let Err(e) = item.slot.finish(Ok(buf[..size].to_vec())) {
-            tracing::error!("unable to finish slot: {}", e);
+        if item.slot.finish(Ok(buf[..size].to_vec())).is_err() {
+            // This should only be because of a failure already reported by the writer
+            tracing::debug!("unable to finish slot");
         }
     }
 }

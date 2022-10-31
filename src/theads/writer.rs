@@ -5,7 +5,7 @@ use crate::{
     compressor, decmpfs, num_blocks, remove_xattr, reset_times, resource_fork, seq_queue,
     set_flags, set_xattr, ForceWritableFile,
 };
-use std::fs::Metadata;
+use std::fs::{File, Metadata};
 use std::io::{BufWriter, Seek, SeekFrom, Write};
 use std::os::macos::fs::MetadataExt;
 use std::path::Path;
@@ -70,12 +70,13 @@ impl Writer {
         }
     }
 
+    #[tracing::instrument(level = "debug", skip_all, err)]
     fn write_blocks<W: Write>(
         &mut self,
         mut writer: W,
         blocks: seq_queue::Receiver<io::Result<Vec<u8>>>,
     ) -> io::Result<WriteDest> {
-        let block_span = tracing::debug_span!("writing block");
+        let block_span = tracing::debug_span!("write block");
 
         let block1 = match blocks.recv() {
             Ok(block) => block?,
@@ -135,38 +136,7 @@ impl Writer {
         let res = self
             .write_blocks(&mut resource_fork, item.blocks)
             .and_then(|write_dest| {
-                let (storage, extra_data) = match write_dest {
-                    WriteDest::Xattr { data } => (decmpfs::Storage::Xattr, data),
-                    WriteDest::BlocksWritten => (decmpfs::Storage::ResourceFork, Vec::new()),
-                };
-
-                let compression_type = CompressionType {
-                    compression: self.compressor_kind,
-                    storage,
-                };
-                let header = decmpfs::DiskHeader {
-                    compression_type: compression_type.raw_type(),
-                    uncompressed_size: file_size,
-                };
-
-                self.decomp_xattr_val_buf.clear();
-                header.write_into(&mut self.decomp_xattr_val_buf)?;
-
-                if storage == decmpfs::Storage::ResourceFork {
-                    self.compressor_kind
-                        .finish(&mut resource_fork, &self.block_sizes)?;
-                    resource_fork.flush()?;
-                    drop(resource_fork);
-                } else {
-                    self.decomp_xattr_val_buf.extend_from_slice(&extra_data);
-                }
-                set_xattr(
-                    &item.file,
-                    decmpfs::XATTR_NAME,
-                    &self.decomp_xattr_val_buf,
-                    0,
-                )?;
-                Ok(())
+                self.finish_xattrs(&item.file, file_size, write_dest, resource_fork)
             })
             .and_then(|()| {
                 // TODO: Decompress back into file on error
@@ -174,9 +144,8 @@ impl Writer {
             })
             .and_then(|()| set_flags(&item.file, item.metadata.st_flags() | libc::UF_COMPRESSED));
 
-        if let Err(e) = res {
+        if res.is_err() {
             let _enter = tracing::error_span!("removing xattrs").entered();
-            tracing::error!("error while writing compressed file: {}", e);
             if let Err(e) = remove_xattr(&item.file, decmpfs::XATTR_NAME) {
                 tracing::error!("error while removing decmpfs header: {}", e);
             }
@@ -188,12 +157,44 @@ impl Writer {
         if let Err(e) = reset_times(&item.file, &item.metadata) {
             tracing::error!("unable to reset file times: {}", e);
         }
-        {
-            let _enter = tracing::debug_span!("file sync").entered();
-            if let Err(e) = item.file.sync_all() {
-                tracing::error!("error syncing file: {}", e);
-            }
+    }
+
+    #[tracing::instrument(level = "debug", skip_all, err)]
+    fn finish_xattrs<W: Write + Seek>(
+        &mut self,
+        file: &File,
+        file_size: u64,
+        write_dest: WriteDest,
+        mut resource_fork: W,
+    ) -> io::Result<()> {
+        let (storage, extra_data) = match write_dest {
+            WriteDest::Xattr { data } => (decmpfs::Storage::Xattr, data),
+            WriteDest::BlocksWritten => (decmpfs::Storage::ResourceFork, Vec::new()),
+        };
+
+        let compression_type = CompressionType {
+            compression: self.compressor_kind,
+            storage,
+        };
+        let header = decmpfs::DiskHeader {
+            compression_type: compression_type.raw_type(),
+            uncompressed_size: file_size,
+        };
+
+        self.decomp_xattr_val_buf.clear();
+        self.decomp_xattr_val_buf
+            .reserve(decmpfs::DiskHeader::SIZE + extra_data.len());
+        header.write_into(&mut self.decomp_xattr_val_buf)?;
+
+        if storage == decmpfs::Storage::ResourceFork {
+            self.compressor_kind
+                .finish(&mut resource_fork, &self.block_sizes)?;
+            resource_fork.flush()?;
+        } else {
+            self.decomp_xattr_val_buf.extend_from_slice(&extra_data);
         }
+        set_xattr(file, decmpfs::XATTR_NAME, &self.decomp_xattr_val_buf, 0)?;
+        Ok(())
     }
 }
 

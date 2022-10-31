@@ -18,6 +18,7 @@ impl super::CompressorImpl for Zlib {
         let encoder = ZlibEncoder::new(src, Compression::default());
         let bytes_read = try_read_all(encoder, &mut dst[..src.len()])?;
         if bytes_read == src.len() {
+            tracing::trace!("writing uncompressed data");
             dst[0] = 0xff;
             dst[1..][..src.len()].copy_from_slice(src);
             return Ok(src.len() + 1);

@@ -66,6 +66,12 @@ fn check_compressible(path: &Path, metadata: &Metadata) -> io::Result<()> {
             "file already compressed",
         ));
     }
+    if metadata.len() >= u64::from(u32::MAX) {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "file is too large to be compressed",
+        ));
+    }
 
     let path = CString::new(path.as_os_str().as_bytes())?;
 
