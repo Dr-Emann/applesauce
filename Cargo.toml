@@ -25,7 +25,6 @@ clap = { version = "4.0", features = ["derive"] }
 crossbeam-channel = "0.5.6"
 libc = "0.2.127"
 memchr = "2.5"
-rayon = "1.5.3"
 tracing = "0.1.36"
 tracing-chrome = "0.6.0"
 indicatif = "0.17.1"
