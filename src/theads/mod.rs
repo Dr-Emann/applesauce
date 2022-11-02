@@ -1,6 +1,6 @@
 use crate::compressor;
 use std::num::NonZeroUsize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::thread;
 use std::thread::JoinHandle;
 
@@ -28,8 +28,8 @@ impl Drop for ThreadJoiner {
 
 pub struct BackgroundThreads {
     reader: reader::ReaderThreads,
-    compressor: compressing::CompressionThreads,
-    writer: writer::WriterThreads,
+    _compressor: compressing::CompressionThreads,
+    _writer: writer::WriterThreads,
 }
 
 impl BackgroundThreads {
@@ -44,8 +44,8 @@ impl BackgroundThreads {
         let reader = reader::ReaderThreads::new(2, compressor.chan(), writer.chan());
         Self {
             reader,
-            compressor,
-            writer,
+            _compressor: compressor,
+            _writer: writer,
         }
     }
 

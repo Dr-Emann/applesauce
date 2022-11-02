@@ -15,7 +15,7 @@ pub struct WorkItem {
 pub struct CompressionThreads {
     // Order is important: Drop happens top to bottom, drop the sender before trying to join the threads
     tx: crossbeam_channel::Sender<WorkItem>,
-    joiner: ThreadJoiner,
+    _joiner: ThreadJoiner,
 }
 
 impl CompressionThreads {
@@ -32,7 +32,7 @@ impl CompressionThreads {
 
         Self {
             tx,
-            joiner: ThreadJoiner::new(threads),
+            _joiner: ThreadJoiner::new(threads),
         }
     }
 

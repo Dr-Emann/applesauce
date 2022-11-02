@@ -6,14 +6,11 @@ pub mod resource_fork;
 mod seq_queue;
 mod theads;
 
-use crate::compressor::{Compressor, CompressorImpl};
-use crate::decmpfs::{CompressionType, Storage};
-use crate::resource_fork::ResourceFork;
+use crate::compressor::Compressor;
 use libc::c_char;
 use std::ffi::{CStr, CString};
 use std::fs::{File, Metadata, Permissions};
 use std::io::prelude::*;
-use std::io::{BufWriter, SeekFrom};
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::os::macos::fs::MetadataExt as _;
@@ -240,6 +237,7 @@ fn set_xattr(file: &File, xattr_name: &CStr, data: &[u8], offset: u32) -> io::Re
     }
 }
 
+#[tracing::instrument(level = "trace", skip_all, fields(flags), err)]
 fn set_flags(file: &File, flags: libc::c_uint) -> io::Result<()> {
     let rc =
         // SAFETY: fd is valid
@@ -306,11 +304,6 @@ impl Drop for ForceWritableFile {
 
 pub struct FileCompressor {
     bg_threads: BackgroundThreads,
-    compressor: Compressor,
-    decomp_xattr_val_buf: Vec<u8>,
-    read_buffer: Box<[u8]>,
-    write_buffer: Box<[u8]>,
-    block_sizes: Vec<u32>,
 }
 
 pub trait Progress {
@@ -333,101 +326,14 @@ impl FileCompressor {
     pub fn new(compressor: Compressor) -> Self {
         Self {
             bg_threads: BackgroundThreads::new(compressor.kind()),
-            compressor,
-            decomp_xattr_val_buf: Vec::with_capacity(decmpfs::DiskHeader::SIZE),
-            read_buffer: vec![0; BLOCK_SIZE].into_boxed_slice(),
-            write_buffer: vec![0; BLOCK_SIZE + 1024].into_boxed_slice(),
-            block_sizes: Vec::new(),
         }
     }
 
     #[tracing::instrument(skip_all, fields(path = %path.display()), err)]
-    pub fn compress_path(&mut self, path: &Path, progress: &mut impl Progress) -> io::Result<()> {
+    pub fn compress_path(&mut self, path: &Path, _progress: &mut impl Progress) -> io::Result<()> {
         self.bg_threads.submit(path);
         Ok(())
     }
-
-    fn raw_compress_into<R: Read, W: Write>(
-        &mut self,
-        mut r: R,
-        mut w: W,
-        expected_len: u64,
-        progress: &mut impl Progress,
-    ) -> io::Result<RawCompressResult> {
-        self.block_sizes.clear();
-        let block_count = num_blocks(expected_len);
-        let mut total_read: u64 = 0;
-
-        let block_span = tracing::debug_span!("compressing block");
-
-        if block_count <= 1 {
-            let _enter = block_span.enter();
-
-            let n = try_read_all(&mut r, &mut self.read_buffer)?;
-            total_read += u64::try_from(n).unwrap();
-            if total_read != expected_len {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "file size changed while reading",
-                ));
-            }
-            if block_count == 0 {
-                return Ok(RawCompressResult::SingleBlock { write_buf_len: 0 });
-            }
-
-            let dst_len = self
-                .compressor
-                .compress(&mut self.write_buffer, &self.read_buffer[..n])?;
-            // unwrap safe: dst_len <= write_buffer.len()
-            self.block_sizes.push(dst_len.try_into().unwrap());
-
-            progress.set_position(total_read);
-
-            // If the block will fit in the xattr, return a single block
-            if dst_len + decmpfs::DiskHeader::SIZE < decmpfs::MAX_XATTR_SIZE {
-                tracing::debug!("compressible inside xattr");
-                return Ok(RawCompressResult::SingleBlock {
-                    write_buf_len: dst_len,
-                });
-            }
-        }
-
-        loop {
-            let _enter = block_span.enter();
-
-            let n = try_read_all(&mut r, &mut self.read_buffer)?;
-            if n == 0 {
-                break;
-            }
-            total_read += u64::try_from(n).unwrap();
-            if total_read > expected_len {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "file size changed while reading",
-                ));
-            }
-
-            let dst_len = self
-                .compressor
-                .compress(&mut self.write_buffer, &self.read_buffer[..n])?;
-            w.write_all(&self.write_buffer[..dst_len])?;
-            self.block_sizes.push(dst_len.try_into().unwrap());
-
-            progress.set_position(total_read);
-        }
-        if total_read != expected_len {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "file size changed while reading",
-            ));
-        }
-        Ok(RawCompressResult::BlocksWritten)
-    }
-}
-
-enum RawCompressResult {
-    SingleBlock { write_buf_len: usize },
-    BlocksWritten,
 }
 
 fn try_read_all<R: Read>(mut r: R, buf: &mut [u8]) -> io::Result<usize> {

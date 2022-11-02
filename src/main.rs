@@ -1,9 +1,7 @@
 use applesauce::compressor::Compressor;
-use applesauce::Progress;
 use cfg_if::cfg_if;
 use clap::Parser;
 use indicatif::{MultiProgress, ProgressBar};
-use rayon::prelude::*;
 use std::path::PathBuf;
 use tracing_chrome::ChromeLayerBuilder;
 use tracing_subscriber::fmt::time;

@@ -139,6 +139,7 @@ impl Writer {
                 self.finish_xattrs(&item.file, file_size, write_dest, resource_fork)
             })
             .and_then(|()| {
+                let _entered = tracing::trace_span!("truncating file").entered();
                 // TODO: Decompress back into file on error
                 item.file.set_len(0)
             })
