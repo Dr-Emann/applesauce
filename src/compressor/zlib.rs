@@ -67,10 +67,15 @@ impl super::CompressorImpl for Zlib {
                 io::Error::new(io::ErrorKind::Other, "offset too large for 32 bytes")
             })?;
         }
-        debug_assert_eq!(
-            writer.stream_position()?,
-            Self::blocks_start(block_count.into())
-        );
+
+        // This is logically a non-modifying operation, even if it takes &mut self, and can fail
+        #[allow(clippy::debug_assert_with_mut_call)]
+        {
+            debug_assert_eq!(
+                writer.stream_position()?,
+                Self::blocks_start(block_count.into())
+            );
+        }
         Ok(())
     }
 }

@@ -114,6 +114,8 @@ pub enum Kind {
 impl Kind {
     #[must_use]
     pub fn supported(self) -> bool {
+        // Clippy falsely sees these arms as identical
+        #[allow(clippy::match_same_arms)]
         match self {
             Kind::Zlib => cfg!(feature = "zlib"),
             Kind::Lzvn => cfg!(feature = "lzvn"),

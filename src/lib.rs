@@ -1,4 +1,12 @@
 #![warn(unsafe_op_in_unsafe_fn)]
+#![warn(clippy::undocumented_unsafe_blocks)]
+#![warn(clippy::cast_lossless)]
+#![warn(clippy::cast_ptr_alignment)]
+#![warn(clippy::clone_on_ref_ptr)]
+#![warn(clippy::cloned_instead_of_copied)]
+#![warn(clippy::debug_assert_with_mut_call)]
+#![warn(clippy::filetype_is_file)]
+#![warn(clippy::match_same_arms)]
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 compile_error!("applesauce only works on macos/ios");
@@ -177,6 +185,7 @@ fn reset_times(file: &File, metadata: &Metadata) -> io::Result<()> {
 }
 
 fn remove_xattr(file: &File, xattr_name: &CStr) -> io::Result<()> {
+    // SAFETY: fd is valid, xattr_name is valid, and null terminated
     let rc = unsafe {
         libc::fremovexattr(
             file.as_raw_fd(),
