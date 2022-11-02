@@ -1,12 +1,15 @@
 #![warn(unsafe_op_in_unsafe_fn)]
 
-pub mod compressor;
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+compile_error!("applesauce only works on macos/ios");
+
+mod compressor;
 mod decmpfs;
-pub mod resource_fork;
+mod resource_fork;
 mod seq_queue;
 mod theads;
 
-use crate::compressor::Compressor;
+pub use compressor::Compressor;
 use libc::c_char;
 use std::ffi::{CStr, CString};
 use std::fs::{File, Metadata, Permissions};
@@ -193,7 +196,7 @@ fn remove_xattr(file: &File, xattr_name: &CStr) -> io::Result<()> {
 fn has_xattr(path: &CStr, xattr_name: &CStr) -> io::Result<bool> {
     // SAFETY:
     // path/xattr_name are valid pointers and are null terminated
-    // value == NULL, size === 0 is allowed to just return the size
+    // value == NULL, size == 0 is allowed to just return the size
     let rc = unsafe {
         libc::getxattr(
             path.as_ptr(),

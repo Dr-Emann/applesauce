@@ -91,32 +91,43 @@ impl Read for ResourceFork<'_> {
     }
 
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
-        // SAFETY:
-        //   fd is valid
-        //   xattr name is valid, and null terminated
-        //   a null value and size are allowed
-        let rc = unsafe {
-            libc::fgetxattr(
-                self.file.as_raw_fd(),
-                XATTR_NAME.as_ptr(),
-                ptr::null_mut(),
-                0,
-                0,
-                XATTR_SHOWCOMPRESSION,
-            )
-        };
-        let xattr_len = if rc < 0 {
-            let e = io::Error::last_os_error();
-            if e.raw_os_error() == Some(libc::ENOATTR) {
-                0
+        let xattr_len = loop {
+            // SAFETY:
+            //   fd is valid
+            //   xattr name is valid, and null terminated
+            //   a null value and size are allowed
+            let rc = unsafe {
+                libc::fgetxattr(
+                    self.file.as_raw_fd(),
+                    XATTR_NAME.as_ptr(),
+                    ptr::null_mut(),
+                    0,
+                    0,
+                    XATTR_SHOWCOMPRESSION,
+                )
+            };
+
+            let xattr_len = if rc >= 0 {
+                rc as usize
             } else {
-                return Err(e);
-            }
-        } else {
-            rc as usize
+                let e = io::Error::last_os_error();
+                if e.kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
+                if e.raw_os_error() == Some(libc::ENOATTR) {
+                    0
+                } else {
+                    return Err(e);
+                }
+            };
+            break xattr_len;
         };
 
         let remaining_bytes = xattr_len.saturating_sub(self.offset.try_into().unwrap());
+        if remaining_bytes == 0 {
+            return Ok(0);
+        }
+
         let buf_start = buf.len();
         buf.resize(buf_start + remaining_bytes, 0);
 

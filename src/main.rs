@@ -1,4 +1,4 @@
-use applesauce::compressor::Compressor;
+use applesauce::Compressor;
 use cfg_if::cfg_if;
 use clap::Parser;
 use indicatif::{MultiProgress, ProgressBar};

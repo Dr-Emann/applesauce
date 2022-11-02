@@ -94,8 +94,7 @@ mod tests {
         cursor.set_position(0x200);
         let block_sizes = &[10, 20, 30, 40, 10];
 
-        let mut compressor = Zlib;
-        compressor.finish(&mut cursor, block_sizes).unwrap();
+        Zlib::finish(&mut cursor, block_sizes).unwrap();
         let result = cursor.into_inner();
         assert_eq!(
             result[..16],
