@@ -48,11 +48,11 @@ fn cstr_from_bytes_until_null(bytes: &[c_char]) -> Option<&CStr> {
 
 const ZFS_SUBTYPE: u32 = u32::from_be_bytes(*b"ZFS\0");
 
-fn num_blocks(size: u64) -> u64 {
+const fn num_blocks(size: u64) -> u64 {
     (size + (BLOCK_SIZE as u64 - 1)) / (BLOCK_SIZE as u64)
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(level = "debug", skip_all)]
 fn check_compressible(path: &Path, metadata: &Metadata) -> io::Result<()> {
     if !metadata.is_file() {
         return Err(io::Error::new(io::ErrorKind::Other, "not a file"));
@@ -365,7 +365,7 @@ fn try_read_all<R: Read>(mut r: R, buf: &mut [u8]) -> io::Result<usize> {
     Ok(read_len)
 }
 
-fn checked_add_signed(x: u64, i: i64) -> Option<u64> {
+const fn checked_add_signed(x: u64, i: i64) -> Option<u64> {
     if i >= 0 {
         x.checked_add(i as u64)
     } else {
