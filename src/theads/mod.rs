@@ -1,6 +1,7 @@
-use crate::compressor;
+use crate::{compressor, Progress};
 use std::num::NonZeroUsize;
-use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
 
@@ -32,14 +33,18 @@ pub struct BackgroundThreads {
     _writer: writer::WriterThreads,
 }
 
+pub struct Context {
+    path: PathBuf,
+    progress: Box<dyn Progress + Send + Sync>,
+}
+
 impl BackgroundThreads {
     pub fn new(compressor_kind: compressor::Kind) -> Self {
-        let compressor = compressing::CompressionThreads::new(
-            compressor_kind,
-            thread::available_parallelism()
-                .map(NonZeroUsize::get)
-                .unwrap_or(4),
-        );
+        let compressor_threads = thread::available_parallelism()
+            .map(NonZeroUsize::get)
+            .unwrap_or(1);
+
+        let compressor = compressing::CompressionThreads::new(compressor_threads, compressor_kind);
         let writer = writer::WriterThreads::new(2, compressor_kind);
         let reader = reader::ReaderThreads::new(2, compressor.chan(), writer.chan());
         Self {
@@ -49,10 +54,12 @@ impl BackgroundThreads {
         }
     }
 
-    pub fn submit(&self, path: &Path) {
+    pub fn submit(&self, path: PathBuf, progress: Box<dyn Progress + Send + Sync>) {
         self.reader
             .chan()
-            .send(reader::WorkItem { path: path.into() })
+            .send(reader::WorkItem {
+                context: Arc::new(Context { path, progress }),
+            })
             .unwrap()
     }
 }

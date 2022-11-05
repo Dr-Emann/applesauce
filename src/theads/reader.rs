@@ -1,4 +1,4 @@
-use crate::theads::{compressing, writer, ThreadJoiner};
+use crate::theads::{compressing, writer, Context, ThreadJoiner};
 use crate::{check_compressible, seq_queue, try_read_all, ForceWritableFile, BLOCK_SIZE};
 use std::fs::File;
 use std::num::NonZeroUsize;
@@ -9,7 +9,7 @@ use std::{io, mem, thread};
 pub type Sender = crossbeam_channel::Sender<WorkItem>;
 
 pub struct WorkItem {
-    pub path: Arc<Path>,
+    pub context: Arc<Context>,
 }
 
 pub struct ReaderThreads {
@@ -64,10 +64,13 @@ impl Reader {
     }
 
     fn handle_work_item(&mut self, item: WorkItem) -> io::Result<()> {
-        let WorkItem { path } = item;
+        let WorkItem { context } = item;
+        let path: &Path = &context.path;
         let metadata = path.metadata()?;
 
-        check_compressible(&path, &metadata)?;
+        context.progress.set_total_length(metadata.len());
+
+        check_compressible(path, &metadata)?;
 
         let file_size = metadata.len();
         let file = Arc::new(ForceWritableFile::open(&path, &metadata)?);
@@ -80,14 +83,14 @@ impl Reader {
 
         self.writer
             .send(writer::WorkItem {
-                path: Arc::clone(&path),
+                context: Arc::clone(&context),
                 file: Arc::clone(&file),
                 blocks: rx,
                 metadata,
             })
             .unwrap();
 
-        if let Err(mut e) = self.read_file_into(&path, &file, file_size, &tx) {
+        if let Err(mut e) = self.read_file_into(&context, &file, file_size, &tx) {
             if let Some(slot) = tx.prepare_send() {
                 let orig_e = mem::replace(&mut e, io::ErrorKind::Other.into());
                 let _ = slot.finish(Err(orig_e));
@@ -100,10 +103,10 @@ impl Reader {
 
     fn read_file_into(
         &mut self,
-        path: &Arc<Path>,
+        context: &Arc<Context>,
         file: &File,
         expected_len: u64,
-        tx: &seq_queue::Sender<io::Result<Vec<u8>>>,
+        tx: &seq_queue::Sender<io::Result<writer::Chunk>>,
     ) -> io::Result<()> {
         let mut total_read = 0;
         let block_span = tracing::debug_span!("reading blocks");
@@ -132,7 +135,7 @@ impl Reader {
                 let _enter = tracing::debug_span!("waiting to send to compressor").entered();
                 self.compressor
                     .send(compressing::WorkItem {
-                        path: Arc::clone(path),
+                        context: Arc::clone(context),
                         data: self.buf[..n].to_vec(),
                         slot,
                     })
@@ -157,7 +160,8 @@ fn thread_impl(
     let _entered = tracing::debug_span!("reader thread").entered();
     let mut reader = Reader::new(compressor_chan, writer_chan);
     for item in rx {
-        let _entered = tracing::info_span!("reading file", path=%item.path.display()).entered();
+        let _entered =
+            tracing::info_span!("reading file", path=%item.context.path.display()).entered();
         if let Err(e) = reader.handle_work_item(item) {
             tracing::error!("unable to compress file: {}", e);
         }

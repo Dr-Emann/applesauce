@@ -1,6 +1,6 @@
 use crate::decmpfs::CompressionType;
 use crate::resource_fork::ResourceFork;
-use crate::theads::ThreadJoiner;
+use crate::theads::{writer, Context, ThreadJoiner};
 use crate::{
     compressor, decmpfs, num_blocks, remove_xattr, reset_times, resource_fork, seq_queue,
     set_flags, set_xattr, ForceWritableFile,
@@ -8,16 +8,20 @@ use crate::{
 use std::fs::{File, Metadata};
 use std::io::{BufWriter, Seek, SeekFrom, Write};
 use std::os::macos::fs::MetadataExt;
-use std::path::Path;
 use std::sync::Arc;
 use std::{io, thread};
 
 pub type Sender = crossbeam_channel::Sender<WorkItem>;
 
+pub struct Chunk {
+    pub block: Vec<u8>,
+    pub orig_size: u64,
+}
+
 pub struct WorkItem {
-    pub path: Arc<Path>,
+    pub context: Arc<Context>,
     pub(crate) file: Arc<ForceWritableFile>,
-    pub blocks: seq_queue::Receiver<io::Result<Vec<u8>>>,
+    pub blocks: seq_queue::Receiver<io::Result<Chunk>>,
     pub metadata: Metadata,
 }
 
@@ -73,48 +77,57 @@ impl Writer {
     #[tracing::instrument(level = "debug", skip_all, err)]
     fn write_blocks<W: Write>(
         &mut self,
+        context: &Context,
         mut writer: W,
-        blocks: seq_queue::Receiver<io::Result<Vec<u8>>>,
+        chunks: seq_queue::Receiver<io::Result<Chunk>>,
     ) -> io::Result<WriteDest> {
         let block_span = tracing::debug_span!("write block");
 
-        let block1 = match blocks.recv() {
-            Ok(block) => block?,
+        let chunk1 = match chunks.recv() {
+            Ok(chunk) => chunk?,
             Err(_) => return Ok(WriteDest::Xattr { data: Vec::new() }),
         };
-        let block2 = match blocks.recv() {
-            Ok(block) => block?,
+        let chunk2 = match chunks.recv() {
+            Ok(chunk) => chunk?,
             Err(_) => {
                 // no second block
-                return if block1.len() <= decmpfs::MAX_XATTR_DATA_SIZE {
+                let result = if chunk1.block.len() <= decmpfs::MAX_XATTR_DATA_SIZE {
                     tracing::debug!("compressible inside xattr");
-                    Ok(WriteDest::Xattr { data: block1 })
+                    WriteDest::Xattr { data: chunk1.block }
                 } else {
                     let _enter = block_span.enter();
-                    self.block_sizes.push(block1.len().try_into().unwrap());
-                    writer.write_all(&block1)?;
-                    Ok(WriteDest::BlocksWritten)
+                    self.block_sizes
+                        .push(chunk1.block.len().try_into().unwrap());
+                    writer.write_all(&chunk1.block)?;
+                    WriteDest::BlocksWritten
                 };
+                context.progress.increment(chunk1.orig_size);
+                return Ok(result);
             }
         };
         {
             let _enter = block_span.enter();
-            self.block_sizes.push(block1.len().try_into().unwrap());
-            writer.write_all(&block1)?;
+            self.block_sizes
+                .push(chunk1.block.len().try_into().unwrap());
+            writer.write_all(&chunk1.block)?;
+            context.progress.increment(chunk1.orig_size);
         }
         {
             let _enter = block_span.enter();
-            self.block_sizes.push(block2.len().try_into().unwrap());
-            writer.write_all(&block2)?;
+            self.block_sizes
+                .push(chunk2.block.len().try_into().unwrap());
+            writer.write_all(&chunk2.block)?;
+            context.progress.increment(chunk2.orig_size);
         }
-        drop((block1, block2));
+        drop((chunk1, chunk2));
 
-        for block in blocks {
-            let block = block?;
+        for chunk in chunks {
+            let Chunk { block, orig_size } = chunk?;
             let _enter = block_span.enter();
 
             self.block_sizes.push(block.len().try_into().unwrap());
             writer.write_all(&block)?;
+            context.progress.increment(orig_size);
         }
         Ok(WriteDest::BlocksWritten)
     }
@@ -134,7 +147,7 @@ impl Writer {
             .unwrap();
 
         let res = self
-            .write_blocks(&mut resource_fork, item.blocks)
+            .write_blocks(&item.context, &mut resource_fork, item.blocks)
             .and_then(|write_dest| {
                 self.finish_xattrs(&item.file, file_size, write_dest, resource_fork)
             })
@@ -203,7 +216,8 @@ fn thread_impl(compressor_kind: compressor::Kind, rx: crossbeam_channel::Receive
     let _entered = tracing::debug_span!("writer thread").entered();
     let mut writer = Writer::new(compressor_kind);
     for item in rx {
-        let _entered = tracing::info_span!("writing file", path=%item.path.display()).entered();
+        let _entered =
+            tracing::info_span!("writing file", path=%item.context.path.display()).entered();
         writer.handle_work_item(item);
     }
 }

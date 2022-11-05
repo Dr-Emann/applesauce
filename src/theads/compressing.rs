@@ -1,15 +1,14 @@
-use crate::theads::ThreadJoiner;
+use crate::theads::{writer, Context, ThreadJoiner};
 use crate::{compressor, seq_queue, BLOCK_SIZE};
-use std::path::Path;
 use std::sync::Arc;
 use std::{io, thread};
 
 pub type Sender = crossbeam_channel::Sender<WorkItem>;
 
 pub struct WorkItem {
-    pub path: Arc<Path>,
+    pub context: Arc<Context>,
     pub data: Vec<u8>,
-    pub slot: seq_queue::Slot<io::Result<Vec<u8>>>,
+    pub slot: seq_queue::Slot<io::Result<writer::Chunk>>,
 }
 
 pub struct CompressionThreads {
@@ -19,7 +18,7 @@ pub struct CompressionThreads {
 }
 
 impl CompressionThreads {
-    pub fn new(compressor_kind: compressor::Kind, count: usize) -> Self {
+    pub fn new(count: usize, compressor_kind: compressor::Kind) -> Self {
         assert!(count > 0);
 
         let (tx, rx) = crossbeam_channel::bounded(8);
@@ -48,9 +47,13 @@ fn thread_impl(compressor_kind: compressor::Kind, rx: crossbeam_channel::Receive
 
     for item in rx {
         let _entered =
-            tracing::info_span!("compressing block", path=%item.path.display()).entered();
+            tracing::info_span!("compressing block", path=%item.context.path.display()).entered();
         let size = compressor.compress(&mut buf, &item.data).unwrap();
-        if item.slot.finish(Ok(buf[..size].to_vec())).is_err() {
+        let chunk = writer::Chunk {
+            block: buf[..size].to_vec(),
+            orig_size: item.data.len().try_into().unwrap(),
+        };
+        if item.slot.finish(Ok(chunk)).is_err() {
             // This should only be because of a failure already reported by the writer
             tracing::debug!("unable to finish slot");
         }

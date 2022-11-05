@@ -109,18 +109,11 @@ fn main() {
                     if !entry.file_type().is_file() {
                         return;
                     }
-                    let mut pb = progress_bars
-                        .add(ProgressBar::new(10).with_prefix(entry.path().display().to_string()));
+                    let pb = progress_bars
+                        .add(ProgressBar::new(1).with_prefix(entry.path().display().to_string()));
                     let full_path = root.join(entry.path());
 
-                    match compressor.compress_path(&full_path, &mut pb) {
-                        Ok(()) => {
-                            tracing::debug!("successfully compressed {}", full_path.display())
-                        }
-                        Err(e) => {
-                            tracing::error!("Error compressing {}: {}", full_path.display(), e)
-                        }
-                    }
+                    compressor.compress_path(full_path.clone(), pb);
                 });
             drop(compressor);
             tracing::info!("Finished compressing");

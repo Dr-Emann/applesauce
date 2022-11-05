@@ -28,7 +28,7 @@ use std::os::macos::fs::MetadataExt as _;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 use std::os::unix::io::AsRawFd;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::{fs, io, mem, ptr};
 
 macro_rules! cstr {
@@ -319,17 +319,22 @@ pub struct FileCompressor {
 }
 
 pub trait Progress {
-    fn set_total_length(&mut self, length: u64);
-    fn set_position(&mut self, position: u64);
+    fn set_total_length(&self, length: u64);
+    fn increment(&self, amt: u64);
+    fn message(&self, message: &str);
 }
 
 impl Progress for indicatif::ProgressBar {
-    fn set_total_length(&mut self, length: u64) {
-        indicatif::ProgressBar::set_length(self, length);
+    fn set_total_length(&self, length: u64) {
+        self.set_length(length);
     }
 
-    fn set_position(&mut self, position: u64) {
-        indicatif::ProgressBar::set_position(self, position);
+    fn increment(&self, amt: u64) {
+        self.inc(amt);
+    }
+
+    fn message(&self, message: &str) {
+        self.println(message);
     }
 }
 
@@ -341,10 +346,14 @@ impl FileCompressor {
         }
     }
 
-    #[tracing::instrument(skip_all, fields(path = %path.display()), err)]
-    pub fn compress_path(&mut self, path: &Path, _progress: &mut impl Progress) -> io::Result<()> {
-        self.bg_threads.submit(path);
-        Ok(())
+    #[tracing::instrument(skip_all, fields(path = %path.display()))]
+    pub fn compress_path(
+        &mut self,
+        path: PathBuf,
+        progress: impl Progress + Send + Sync + 'static,
+    ) {
+        let progress: Box<dyn Progress + Send + Sync> = Box::new(progress);
+        self.bg_threads.submit(path, progress);
     }
 }
 
