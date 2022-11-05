@@ -127,3 +127,9 @@ fn main() {
         }
     }
 }
+
+#[test]
+fn command_check() {
+    use clap::CommandFactory;
+    Cli::command().debug_assert()
+}
