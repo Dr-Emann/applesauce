@@ -1,6 +1,6 @@
 use crate::decmpfs::CompressionType;
 use crate::resource_fork::ResourceFork;
-use crate::theads::{writer, Context, ThreadJoiner};
+use crate::theads::{Context, ThreadJoiner};
 use crate::{
     compressor, decmpfs, num_blocks, remove_xattr, reset_times, resource_fork, seq_queue,
     set_flags, set_xattr, ForceWritableFile,
@@ -139,7 +139,8 @@ impl Writer {
         self.block_sizes.clear();
         self.block_sizes.reserve(block_count.try_into().unwrap());
 
-        let mut resource_fork = BufWriter::new(ResourceFork::new(&item.file));
+        let mut resource_fork =
+            BufWriter::with_capacity(crate::BLOCK_SIZE, ResourceFork::new(&item.file));
         resource_fork
             .seek(SeekFrom::Start(
                 self.compressor_kind.blocks_start(block_count.into()),

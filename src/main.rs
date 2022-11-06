@@ -1,7 +1,7 @@
 use applesauce::Compressor;
 use cfg_if::cfg_if;
 use clap::Parser;
-use indicatif::{MultiProgress, ProgressBar};
+use indicatif::{MultiProgress, ProgressBar, ProgressFinish, ProgressStyle};
 use std::path::PathBuf;
 use tracing_chrome::ChromeLayerBuilder;
 use tracing_subscriber::fmt::time;
@@ -84,6 +84,15 @@ fn main() {
         .with(fmt_layer)
         .init();
 
+    let total_style = ProgressStyle::with_template(
+        "{prefix:>25.bold} {wide_bar:.green} {bytes:>11}/{total_bytes:<11} {eta:6}",
+    )
+    .unwrap();
+    let style = ProgressStyle::with_template(
+        "{prefix:>25.dim} {wide_bar} {bytes:>11}/{total_bytes:<11} {eta:6}",
+    )
+    .unwrap();
+
     let cli = {
         let _enter = tracing::debug_span!("cli parsing").entered();
 
@@ -93,6 +102,9 @@ fn main() {
     match cli.command {
         Commands::Compress(Compress { paths, compression }) => {
             let progress_bars = MultiProgress::new();
+            let total_pb = progress_bars
+                .add(ProgressBar::new(0))
+                .with_style(style.clone());
             let mut compressor = applesauce::FileCompressor::new(compression.compressor());
             paths
                 .iter()
@@ -109,8 +121,14 @@ fn main() {
                     if !entry.file_type().is_file() {
                         return;
                     }
-                    let pb = progress_bars
-                        .add(ProgressBar::new(1).with_prefix(entry.path().display().to_string()));
+                    let pb = progress_bars.add(
+                        ProgressBar::new(0)
+                            .with_prefix(entry.path().display().to_string())
+                            .with_style(style.clone())
+                            .with_finish(ProgressFinish::WithMessage(
+                                format!("compressed {}", entry.path().display()).into(),
+                            )),
+                    );
                     let full_path = root.join(entry.path());
 
                     compressor.compress_path(full_path.clone(), pb);

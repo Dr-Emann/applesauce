@@ -13,6 +13,7 @@ compile_error!("applesauce only works on macos/ios");
 
 mod compressor;
 mod decmpfs;
+mod progress;
 mod resource_fork;
 mod seq_queue;
 mod theads;
@@ -41,6 +42,8 @@ macro_rules! cstr {
 
 use crate::theads::BackgroundThreads;
 pub(crate) use cstr;
+
+pub use progress::Progress;
 
 const BLOCK_SIZE: usize = 0x10000;
 
@@ -316,26 +319,6 @@ impl Drop for ForceWritableFile {
 
 pub struct FileCompressor {
     bg_threads: BackgroundThreads,
-}
-
-pub trait Progress {
-    fn set_total_length(&self, length: u64);
-    fn increment(&self, amt: u64);
-    fn message(&self, message: &str);
-}
-
-impl Progress for indicatif::ProgressBar {
-    fn set_total_length(&self, length: u64) {
-        self.set_length(length);
-    }
-
-    fn increment(&self, amt: u64) {
-        self.inc(amt);
-    }
-
-    fn message(&self, message: &str) {
-        self.println(message);
-    }
 }
 
 impl FileCompressor {
