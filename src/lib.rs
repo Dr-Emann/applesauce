@@ -13,10 +13,11 @@ compile_error!("applesauce only works on macos/ios");
 
 mod compressor;
 mod decmpfs;
+mod path;
 mod progress;
 mod resource_fork;
 mod seq_queue;
-mod theads;
+mod threads;
 
 pub use compressor::Compressor;
 use libc::c_char;
@@ -40,7 +41,7 @@ macro_rules! cstr {
     }};
 }
 
-use crate::theads::BackgroundThreads;
+use crate::threads::BackgroundThreads;
 pub(crate) use cstr;
 
 pub use progress::Progress;

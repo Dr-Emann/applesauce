@@ -1,4 +1,4 @@
-use crate::theads::{compressing, writer, Context, ThreadJoiner};
+use crate::threads::{compressing, writer, Context, ThreadJoiner};
 use crate::{check_compressible, seq_queue, try_read_all, ForceWritableFile, BLOCK_SIZE};
 use std::fs::File;
 use std::num::NonZeroUsize;

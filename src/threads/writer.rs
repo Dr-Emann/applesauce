@@ -1,6 +1,6 @@
 use crate::decmpfs::CompressionType;
 use crate::resource_fork::ResourceFork;
-use crate::theads::{Context, ThreadJoiner};
+use crate::threads::{Context, ThreadJoiner};
 use crate::{
     compressor, decmpfs, num_blocks, remove_xattr, reset_times, resource_fork, seq_queue,
     set_flags, set_xattr, ForceWritableFile,

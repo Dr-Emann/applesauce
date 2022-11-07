@@ -1,4 +1,4 @@
-use crate::theads::{writer, Context, ThreadJoiner};
+use crate::threads::{writer, Context, ThreadJoiner};
 use crate::{compressor, seq_queue, BLOCK_SIZE};
 use std::sync::Arc;
 use std::{io, thread};
