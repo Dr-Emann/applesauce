@@ -3,6 +3,8 @@ use applesauce::Compressor;
 use cfg_if::cfg_if;
 use clap::Parser;
 use std::ffi::OsStr;
+use std::fs::File;
+use std::io::BufWriter;
 use std::path::{Component, Path, PathBuf};
 use tracing_chrome::ChromeLayerBuilder;
 use tracing_subscriber::fmt::time;
@@ -86,16 +88,34 @@ fn main() {
     let cli = Cli::parse();
 
     let _chrome_guard;
-    let chrome_layer = match cli.chrome_tracing {
-        Some(path) => {
-            let (layer, guard) = ChromeLayerBuilder::new()
-                .file(path)
-                .include_args(true)
-                .build();
-            _chrome_guard = guard;
-            Some(layer)
+    let chrome_layer = 'layer: {
+        match cli.chrome_tracing {
+            Some(path) => {
+                let file = match File::create(path) {
+                    Ok(file) => file,
+                    Err(e) => {
+                        tracing::error!("Unable to open chrome layer: {e}");
+                        break 'layer None;
+                    }
+                };
+                let writer = {
+                    cfg_if! {
+                        if #[cfg(feature = "zlib")] {
+                            flate2::write::GzEncoder::new(file, flate2::Compression::default())
+                        } else {
+                            file
+                        }
+                    }
+                };
+                let (layer, guard) = ChromeLayerBuilder::new()
+                    .writer(BufWriter::new(writer))
+                    .include_args(true)
+                    .build();
+                _chrome_guard = guard;
+                Some(layer)
+            }
+            None => None,
         }
-        None => None,
     };
 
     let fmt_layer = tracing_subscriber::fmt::layer().with_timer(time::uptime());

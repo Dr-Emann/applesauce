@@ -28,11 +28,15 @@ impl ReaderThreads {
 
         let (tx, rx) = crossbeam_channel::bounded(1);
         let threads: Vec<_> = (0..count)
-            .map(|_| {
+            .map(|i| {
                 let rx = rx.clone();
                 let compressor_chan = compressor_chan.clone();
                 let writer_chan = writer_chan.clone();
-                thread::spawn(move || thread_impl(rx, compressor_chan, writer_chan))
+
+                thread::Builder::new()
+                    .name(format!("reader {i}"))
+                    .spawn(move || thread_impl(rx, compressor_chan, writer_chan))
+                    .unwrap()
             })
             .collect();
 
@@ -73,11 +77,10 @@ impl Reader {
         check_compressible(path, &metadata)?;
 
         let file_size = metadata.len();
-        let file = Arc::new(ForceWritableFile::open(&path, &metadata)?);
+        let file = Arc::new(ForceWritableFile::open(path, &metadata)?);
         let (tx, rx) = seq_queue::bounded(
             thread::available_parallelism()
                 .map(NonZeroUsize::get)
-                .map(|x| x * 2)
                 .unwrap_or(4),
         );
 

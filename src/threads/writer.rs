@@ -37,9 +37,13 @@ impl WriterThreads {
 
         let (tx, rx) = crossbeam_channel::bounded(1);
         let threads: Vec<_> = (0..count)
-            .map(|_| {
+            .map(|i| {
                 let rx = rx.clone();
-                thread::spawn(move || thread_impl(compressor_kind, rx))
+
+                thread::Builder::new()
+                    .name(format!("writer {i}"))
+                    .spawn(move || thread_impl(compressor_kind, rx))
+                    .unwrap()
             })
             .collect();
 
