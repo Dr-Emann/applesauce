@@ -18,6 +18,12 @@ mod cli_progress;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// Output chrome tracing format to a file
+    ///
+    /// The passed file can be passed to chrome at chrome://tracing
+    #[arg(long, global(true))]
+    chrome_tracing: Option<PathBuf>,
 }
 
 #[derive(Debug, clap::Subcommand)]
@@ -79,10 +85,19 @@ impl Default for Compression {
 fn main() {
     let cli = Cli::parse();
 
-    let (chrome_layer, _guard) = ChromeLayerBuilder::new()
-        .file("/tmp/trace.json")
-        .include_args(true)
-        .build();
+    let _chrome_guard;
+    let chrome_layer = match cli.chrome_tracing {
+        Some(path) => {
+            let (layer, guard) = ChromeLayerBuilder::new()
+                .file(path)
+                .include_args(true)
+                .build();
+            _chrome_guard = guard;
+            Some(layer)
+        }
+        None => None,
+    };
+
     let fmt_layer = tracing_subscriber::fmt::layer().with_timer(time::uptime());
     tracing_subscriber::registry()
         .with(chrome_layer)

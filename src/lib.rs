@@ -13,7 +13,6 @@ compile_error!("applesauce only works on macos/ios");
 
 mod compressor;
 mod decmpfs;
-mod path;
 mod progress;
 mod resource_fork;
 mod seq_queue;
