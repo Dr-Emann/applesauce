@@ -130,7 +130,7 @@ fn main() {
             let mut compressor = applesauce::FileCompressor::new(compression.compressor());
             paths
                 .iter()
-                .flat_map(|root| WalkDir::new(&root).into_iter().map(move |x| (x, root)))
+                .flat_map(|root| WalkDir::new(root).into_iter().map(move |x| (x, root)))
                 .for_each(|(entry, root)| {
                     let entry = match entry {
                         Ok(entry) => entry,
