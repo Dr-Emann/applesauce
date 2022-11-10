@@ -130,8 +130,8 @@ fn main() {
             let mut compressor = applesauce::FileCompressor::new(compression.compressor());
             paths
                 .iter()
-                .flat_map(|root| WalkDir::new(root).into_iter().map(move |x| (x, root)))
-                .for_each(|(entry, root)| {
+                .flat_map(|root| WalkDir::new(root).into_iter())
+                .for_each(|entry| {
                     let entry = match entry {
                         Ok(entry) => entry,
                         Err(e) => {
@@ -144,11 +144,10 @@ fn main() {
                         return;
                     }
 
-                    let full_path = root.join(entry.path());
-                    let truncated_path = truncate_path(&full_path, progress_bars.prefix_len());
+                    let truncated_path = truncate_path(entry.path(), progress_bars.prefix_len());
                     let pb = progress_bars.add(truncated_path.display().to_string());
 
-                    compressor.compress_path(full_path, pb);
+                    compressor.compress_path(entry.path().to_owned(), pb);
                 });
             drop(compressor);
             progress_bars.finish();
