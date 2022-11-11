@@ -176,6 +176,10 @@ impl Writer {
         if let Err(e) = reset_times(&item.file, &item.metadata) {
             tracing::error!("unable to reset file times: {}", e);
         }
+
+        if res.is_ok() {
+            tracing::info!("Successfully compressed {}", item.context.path.display());
+        }
     }
 
     #[tracing::instrument(level = "debug", skip_all, err)]
@@ -218,7 +222,6 @@ impl Writer {
 }
 
 fn thread_impl(compressor_kind: compressor::Kind, rx: crossbeam_channel::Receiver<WorkItem>) {
-    let _entered = tracing::debug_span!("writer thread").entered();
     let mut writer = Writer::new(compressor_kind);
     for item in rx {
         let _entered =

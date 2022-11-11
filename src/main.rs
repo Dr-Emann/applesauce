@@ -1,11 +1,12 @@
-use crate::cli_progress::ProgressBars;
+use crate::cli_progress::{ProgressBarWriter, ProgressBars};
 use applesauce::Compressor;
 use cfg_if::cfg_if;
 use clap::Parser;
 use std::ffi::OsStr;
 use std::fs::File;
-use std::io::BufWriter;
+use std::io::{BufWriter, LineWriter};
 use std::path::{Component, Path, PathBuf};
+use std::sync::Mutex;
 use tracing_chrome::ChromeLayerBuilder;
 use tracing_subscriber::fmt::time;
 use tracing_subscriber::layer::SubscriberExt;
@@ -118,7 +119,15 @@ fn main() {
         }
     };
 
-    let fmt_layer = tracing_subscriber::fmt::layer().with_timer(time::uptime());
+    let progress_bars = ProgressBars::new();
+    let fmt_writer = Mutex::new(LineWriter::new(ProgressBarWriter::new(
+        progress_bars.multi_progress().clone(),
+        std::io::stderr(),
+    )));
+
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .with_timer(time::uptime())
+        .with_writer(fmt_writer);
     tracing_subscriber::registry()
         .with(chrome_layer)
         .with(fmt_layer)
@@ -126,7 +135,6 @@ fn main() {
 
     match cli.command {
         Commands::Compress(Compress { paths, compression }) => {
-            let progress_bars = ProgressBars::new();
             let mut compressor = applesauce::FileCompressor::new(compression.compressor());
             paths
                 .iter()

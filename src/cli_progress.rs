@@ -1,5 +1,6 @@
 use applesauce::Progress;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use std::io::Write;
 
 pub struct ProgressBars {
     style: ProgressStyle,
@@ -50,6 +51,10 @@ impl ProgressBars {
     pub fn prefix_len(&self) -> usize {
         25
     }
+
+    pub fn multi_progress(&self) -> &MultiProgress {
+        &self.bars
+    }
 }
 
 pub struct ProgressWithTotal {
@@ -70,5 +75,29 @@ impl Progress for ProgressWithTotal {
 
     fn message(&self, message: &str) {
         self.single.set_message(message.to_string());
+    }
+}
+
+pub struct ProgressBarWriter<W> {
+    multi_progress: MultiProgress,
+    inner: W,
+}
+
+impl<W> ProgressBarWriter<W> {
+    pub fn new(multi_progress: MultiProgress, inner: W) -> Self {
+        Self {
+            multi_progress,
+            inner,
+        }
+    }
+}
+
+impl<W: Write> Write for ProgressBarWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.multi_progress.suspend(|| self.inner.write(buf))
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.multi_progress.suspend(|| self.inner.flush())
     }
 }
