@@ -47,13 +47,14 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         let len = unsafe { I::encode(&mut dst[..max_compress_size], src, &mut self.buf) };
         debug_assert!(len <= max_compress_size);
         if len == 0 {
-            if let Some(uncompressed_prefix) = I::UNCOMPRESSED_PREFIX {
+            return if let Some(uncompressed_prefix) = I::UNCOMPRESSED_PREFIX {
                 tracing::trace!("storing uncompressed data");
                 dst[0] = uncompressed_prefix;
                 dst[1..][..src.len()].copy_from_slice(src);
+                Ok(src.len() + 1)
             } else {
-                return Err(io::ErrorKind::WriteZero.into());
-            }
+                Err(io::ErrorKind::WriteZero.into())
+            };
         }
         Ok(len)
     }

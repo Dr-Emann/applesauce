@@ -53,6 +53,8 @@ fn thread_impl(compressor_kind: compressor::Kind, rx: crossbeam_channel::Receive
         let _entered =
             tracing::info_span!("compressing block", path=%item.context.path.display()).entered();
         let size = compressor.compress(&mut buf, &item.data).unwrap();
+        debug_assert!(size != 0);
+
         let chunk = writer::Chunk {
             block: buf[..size].to_vec(),
             orig_size: item.data.len().try_into().unwrap(),
