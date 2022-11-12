@@ -60,6 +60,20 @@ impl<I: Impl> CompressorImpl for Lz<I> {
     }
 
     fn decompress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
+        if src.is_empty() {
+            return Err(io::ErrorKind::UnexpectedEof.into());
+        }
+        // check if the data was stored uncompressed
+        if let Some(uncompressed_prefix) = I::UNCOMPRESSED_PREFIX {
+            if src[0] == uncompressed_prefix {
+                let src = &src[1..];
+                if dst.len() < src.len() {
+                    return Err(io::ErrorKind::WriteZero.into());
+                }
+                dst[..src.len()].copy_from_slice(src);
+                return Ok(src.len());
+            }
+        }
         // SAFETY:
         // dst is valid to write up to len bytes
         // src is initialised for len bytes

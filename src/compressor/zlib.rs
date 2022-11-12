@@ -28,6 +28,17 @@ impl super::CompressorImpl for Zlib {
     }
 
     fn decompress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
+        if src.is_empty() {
+            return Err(io::ErrorKind::UnexpectedEof.into());
+        }
+        if src[0] == 0xff {
+            let src = &src[1..];
+            if dst.len() < src.len() {
+                return Err(io::ErrorKind::WriteZero.into());
+            }
+            dst[..src.len()].copy_from_slice(src);
+            return Ok(src.len());
+        }
         let decoder = ZlibDecoder::new(src);
         let bytes_read = try_read_all(decoder, dst)?;
         if bytes_read == dst.len() {
