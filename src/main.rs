@@ -7,10 +7,13 @@ use std::fs::File;
 use std::io::{BufWriter, LineWriter};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
+use tracing::metadata::LevelFilter;
+use tracing::Level;
 use tracing_chrome::ChromeLayerBuilder;
 use tracing_subscriber::fmt::time;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::Layer;
 use walkdir::WalkDir;
 
 mod cli_progress;
@@ -127,7 +130,8 @@ fn main() {
 
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_timer(time::uptime())
-        .with_writer(fmt_writer);
+        .with_writer(fmt_writer)
+        .with_filter(LevelFilter::from_level(Level::INFO));
     tracing_subscriber::registry()
         .with(chrome_layer)
         .with(fmt_layer)
