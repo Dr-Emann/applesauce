@@ -1,5 +1,5 @@
 use crate::cli_progress::{ProgressBarWriter, ProgressBars};
-use applesauce::Compressor;
+use applesauce::{info, Compressor};
 use cfg_if::cfg_if;
 use clap::Parser;
 use std::ffi::OsStr;
@@ -36,6 +36,8 @@ struct Cli {
 enum Commands {
     /// Compress files
     Compress(Compress),
+    /// Get info about compression for file(s)
+    Info(Info),
 }
 
 #[derive(Debug, clap::Args)]
@@ -47,6 +49,15 @@ struct Compress {
     /// The type of compression to use
     #[arg(short, long, value_enum, default_value_t = Compression::default())]
     compression: Compression,
+}
+
+#[derive(Debug, clap::Args)]
+struct Info {
+    /// Paths to inspect
+    ///
+    /// Info will be reported for each path
+    #[arg(required = true)]
+    paths: Vec<PathBuf>,
 }
 
 #[derive(Debug, Copy, Clone, clap::ValueEnum)]
@@ -164,6 +175,63 @@ fn main() {
             drop(compressor);
             progress_bars.finish();
             tracing::info!("Finished compressing");
+        }
+        Commands::Info(info) => {
+            for path in info.paths {
+                let info = info::get(&path);
+                let info = match info {
+                    Ok(info) => info,
+                    Err(e) => {
+                        tracing::error!(
+                            "error reading compression info for {}: {}",
+                            path.display(),
+                            e,
+                        );
+                        continue;
+                    }
+                };
+                if info.is_compressed {
+                    println!("{} is compressed", path.display());
+                } else {
+                    println!("{} is not compressed", path.display());
+                }
+
+                match &info.decmpfs_info {
+                    Some(Ok(decmpfs_info)) => {
+                        println!("Compression type: {}", decmpfs_info.compression_type);
+                        println!(
+                            "Uncompressed size in decmpfs xattr: {}",
+                            decmpfs_info.orig_file_size
+                        );
+                    }
+                    Some(Err(decmpfs_err)) => {
+                        if info.is_compressed {
+                            tracing::error!(
+                                "compressed file has issue with decompfs xattr: {}",
+                                decmpfs_err
+                            );
+                        }
+                    }
+                    None => {
+                        if info.is_compressed {
+                            tracing::error!("compressed file has no decmpfs xattr");
+                        }
+                    }
+                }
+                println!("Uncompressed size: {}", info.stat_size);
+                if info.is_compressed {
+                    println!("Compressed size: {}", info.on_disk_size);
+                    println!(
+                        "Compression savings: {:0.2}%",
+                        (1.0 - info.compressed_fraction()) * 100.0
+                    )
+                }
+                println!("Number of extended attributes: {}", info.xattr_count);
+                println!(
+                    "Size of extended attributes: {} bytes",
+                    info.total_xattr_size
+                );
+            }
         }
     }
 }

@@ -11,12 +11,15 @@
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 compile_error!("applesauce only works on macos/ios");
 
+pub mod info;
+
 mod compressor;
 mod decmpfs;
 mod progress;
 mod resource_fork;
 mod seq_queue;
 mod threads;
+mod xattr;
 
 pub use compressor::Compressor;
 use libc::c_char;
@@ -105,7 +108,9 @@ fn check_compressible(path: &Path, metadata: &Metadata) -> io::Result<()> {
         return Err(io::Error::new(io::ErrorKind::Other, "filesystem is zfs"));
     }
 
-    if has_xattr(&path, resource_fork::XATTR_NAME)? || has_xattr(&path, decmpfs::XATTR_NAME)? {
+    if xattr::is_present(&path, resource_fork::XATTR_NAME)?
+        || xattr::is_present(&path, decmpfs::XATTR_NAME)?
+    {
         return Err(io::Error::new(
             io::ErrorKind::Other,
             "file already has required xattrs",
@@ -180,71 +185,6 @@ fn reset_times(file: &File, metadata: &Metadata) -> io::Result<()> {
     ];
     // SAFETY: fd is valid, times points to an array of 2 timespec values
     let rc = unsafe { libc::futimens(file.as_raw_fd(), times.as_ptr()) };
-    if rc == 0 {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
-    }
-}
-
-fn remove_xattr(file: &File, xattr_name: &CStr) -> io::Result<()> {
-    // SAFETY: fd is valid, xattr_name is valid, and null terminated
-    let rc = unsafe {
-        libc::fremovexattr(
-            file.as_raw_fd(),
-            xattr_name.as_ptr(),
-            libc::XATTR_SHOWCOMPRESSION,
-        )
-    };
-    if rc == -1 {
-        let last_error = io::Error::last_os_error();
-        if last_error.raw_os_error() != Some(libc::ENOATTR) {
-            return Err(last_error);
-        };
-    }
-    Ok(())
-}
-
-fn has_xattr(path: &CStr, xattr_name: &CStr) -> io::Result<bool> {
-    // SAFETY:
-    // path/xattr_name are valid pointers and are null terminated
-    // value == NULL, size == 0 is allowed to just return the size
-    let rc = unsafe {
-        libc::getxattr(
-            path.as_ptr(),
-            xattr_name.as_ptr(),
-            ptr::null_mut(),
-            0,
-            0,
-            libc::XATTR_SHOWCOMPRESSION,
-        )
-    };
-    if rc == -1 {
-        let last_error = io::Error::last_os_error();
-        return if last_error.raw_os_error() == Some(libc::ENOATTR) {
-            Ok(false)
-        } else {
-            Err(last_error)
-        };
-    }
-    Ok(true)
-}
-
-fn set_xattr(file: &File, xattr_name: &CStr, data: &[u8], offset: u32) -> io::Result<()> {
-    // SAFETY:
-    // fd is valid
-    // xattr name is valid and null terminated
-    // value is valid, writable, and initialized up to `.len()` bytes
-    let rc = unsafe {
-        libc::fsetxattr(
-            file.as_raw_fd(),
-            xattr_name.as_ptr(),
-            data.as_ptr().cast(),
-            data.len(),
-            offset,
-            libc::XATTR_SHOWCOMPRESSION,
-        )
-    };
     if rc == 0 {
         Ok(())
     } else {
@@ -369,10 +309,19 @@ fn try_read_all<R: Read>(mut r: R, buf: &mut [u8]) -> io::Result<usize> {
     Ok(read_len)
 }
 
+#[must_use]
 const fn checked_add_signed(x: u64, i: i64) -> Option<u64> {
     if i >= 0 {
         x.checked_add(i as u64)
     } else {
         x.checked_sub(i.unsigned_abs())
+    }
+}
+
+#[must_use]
+const fn round_to_block_size(size: u64, block_size: u64) -> u64 {
+    match size % block_size {
+        0 => size,
+        r => size + (block_size - r),
     }
 }

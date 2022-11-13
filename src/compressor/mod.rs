@@ -4,7 +4,7 @@ use crate::compressor::lzfse::Lzfse;
 use crate::compressor::lzvn::Lzvn;
 #[cfg(feature = "zlib")]
 use crate::compressor::zlib::Zlib;
-use std::io;
+use std::{fmt, io};
 
 #[cfg(any(feature = "lzfse", feature = "lzvn"))]
 mod lz;
@@ -111,9 +111,24 @@ pub enum Kind {
     Lzfse,
 }
 
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
 impl Kind {
     #[must_use]
-    pub fn supported(self) -> bool {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Kind::Zlib => "ZLIB",
+            Kind::Lzvn => "LZVN",
+            Kind::Lzfse => "LZFSE",
+        }
+    }
+
+    #[must_use]
+    pub const fn supported(self) -> bool {
         // Clippy falsely sees these arms as identical
         #[allow(clippy::match_same_arms)]
         match self {

@@ -2,8 +2,8 @@ use crate::decmpfs::CompressionType;
 use crate::resource_fork::ResourceFork;
 use crate::threads::{Context, ThreadJoiner};
 use crate::{
-    compressor, decmpfs, num_blocks, remove_xattr, reset_times, resource_fork, seq_queue,
-    set_flags, set_xattr, ForceWritableFile,
+    compressor, decmpfs, num_blocks, reset_times, resource_fork, seq_queue, set_flags, xattr,
+    ForceWritableFile,
 };
 use std::fs::{File, Metadata};
 use std::io::{BufWriter, Seek, SeekFrom, Write};
@@ -165,10 +165,10 @@ impl Writer {
 
         if res.is_err() {
             let _enter = tracing::error_span!("removing xattrs").entered();
-            if let Err(e) = remove_xattr(&item.file, decmpfs::XATTR_NAME) {
+            if let Err(e) = xattr::remove(&item.file, decmpfs::XATTR_NAME) {
                 tracing::error!("error while removing decmpfs header: {}", e);
             }
-            if let Err(e) = remove_xattr(&item.file, resource_fork::XATTR_NAME) {
+            if let Err(e) = xattr::remove(&item.file, resource_fork::XATTR_NAME) {
                 tracing::error!("error while removing resource fork: {}", e);
             }
         }
@@ -195,10 +195,7 @@ impl Writer {
             WriteDest::BlocksWritten => (decmpfs::Storage::ResourceFork, Vec::new()),
         };
 
-        let compression_type = CompressionType {
-            compression: self.compressor_kind,
-            storage,
-        };
+        let compression_type = CompressionType::new(self.compressor_kind, storage);
         let header = decmpfs::DiskHeader {
             compression_type: compression_type.raw_type(),
             uncompressed_size: file_size,
@@ -216,7 +213,7 @@ impl Writer {
         } else {
             self.decomp_xattr_val_buf.extend_from_slice(&extra_data);
         }
-        set_xattr(file, decmpfs::XATTR_NAME, &self.decomp_xattr_val_buf, 0)?;
+        xattr::set(file, decmpfs::XATTR_NAME, &self.decomp_xattr_val_buf, 0)?;
         Ok(())
     }
 }

@@ -1,10 +1,10 @@
 use crate::compressor;
 use std::ffi::CStr;
-use std::{io, mem};
+use std::{fmt, io, mem};
 
 pub const MAX_XATTR_SIZE: usize = 3802;
 pub const MAX_XATTR_DATA_SIZE: usize = MAX_XATTR_SIZE - DiskHeader::SIZE;
-pub const MAGIC: u32 = u32::from_be_bytes(*b"cmpf");
+pub const MAGIC: [u8; 4] = *b"fpmc";
 
 pub const ZLIB_BLOCK_TABLE_START: u64 = 0x104;
 
@@ -16,42 +16,60 @@ pub enum Storage {
     ResourceFork,
 }
 
+impl fmt::Display for Storage {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = match self {
+            Storage::Xattr => "decmpfs xattr",
+            Storage::ResourceFork => "resource fork",
+        };
+        f.write_str(s)
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct CompressionType {
-    pub compression: compressor::Kind,
-    pub storage: Storage,
+pub struct CompressionType(u32);
+
+impl fmt::Display for CompressionType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.compression_storage() {
+            Some((compressor, storage)) => {
+                write!(f, "{} in {}", compressor, storage)
+            }
+            None => write!(f, "unknown compression type: {}", self.0),
+        }
+    }
 }
 
 impl CompressionType {
-    pub fn raw_type(self) -> u32 {
-        match self {
-            CompressionType {
-                compression: compressor::Kind::Zlib,
-                storage: Storage::Xattr,
-            } => 3,
-            CompressionType {
-                compression: compressor::Kind::Zlib,
-                storage: Storage::ResourceFork,
-            } => 4,
-
-            CompressionType {
-                compression: compressor::Kind::Lzvn,
-                storage: Storage::Xattr,
-            } => 7,
-            CompressionType {
-                compression: compressor::Kind::Lzvn,
-                storage: Storage::ResourceFork,
-            } => 8,
-
-            CompressionType {
-                compression: compressor::Kind::Lzfse,
-                storage: Storage::Xattr,
-            } => 11,
-            CompressionType {
-                compression: compressor::Kind::Lzfse,
-                storage: Storage::ResourceFork,
-            } => 12,
+    pub const fn new(compressor: compressor::Kind, storage: Storage) -> Self {
+        let val = match (compressor, storage) {
+            (compressor::Kind::Zlib, Storage::Xattr) => 3,
+            (compressor::Kind::Zlib, Storage::ResourceFork) => 4,
+            (compressor::Kind::Lzvn, Storage::Xattr) => 7,
+            (compressor::Kind::Lzvn, Storage::ResourceFork) => 8,
+            (compressor::Kind::Lzfse, Storage::Xattr) => 11,
+            (compressor::Kind::Lzfse, Storage::ResourceFork) => 12,
+        };
+        Self(val)
+    }
+    pub const fn compression_storage(self) -> Option<(compressor::Kind, Storage)> {
+        match self.0 {
+            3 => Some((compressor::Kind::Zlib, Storage::Xattr)),
+            4 => Some((compressor::Kind::Zlib, Storage::ResourceFork)),
+            7 => Some((compressor::Kind::Lzvn, Storage::Xattr)),
+            8 => Some((compressor::Kind::Lzvn, Storage::ResourceFork)),
+            11 => Some((compressor::Kind::Lzfse, Storage::Xattr)),
+            12 => Some((compressor::Kind::Lzfse, Storage::ResourceFork)),
+            _ => None,
         }
+    }
+
+    pub const fn from_raw_type(n: u32) -> Self {
+        Self(n)
+    }
+
+    pub const fn raw_type(self) -> u32 {
+        self.0
     }
 }
 
@@ -65,7 +83,7 @@ impl DiskHeader {
     pub const SIZE: usize = 16;
 
     pub fn write_into<W: io::Write>(&self, mut w: W) -> io::Result<()> {
-        w.write_all(&MAGIC.to_le_bytes())?;
+        w.write_all(&MAGIC)?;
         w.write_all(&self.compression_type.to_le_bytes())?;
         w.write_all(&self.uncompressed_size.to_le_bytes())?;
         Ok(())
