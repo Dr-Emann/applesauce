@@ -28,7 +28,7 @@ impl Drop for ThreadJoiner {
 }
 
 pub struct BackgroundThreads {
-    reader: reader::ReaderThreads,
+    reader: BgWorker<reader::Work>,
     _compressor: compressing::CompressionThreads,
     _writer: BgWorker<writer::Work>,
 }
@@ -46,7 +46,13 @@ impl BackgroundThreads {
 
         let compressor = compressing::CompressionThreads::new(compressor_threads, compressor_kind);
         let writer = BgWorker::new(2, &writer::Work { compressor_kind });
-        let reader = reader::ReaderThreads::new(2, compressor.chan(), writer.chan());
+        let reader = BgWorker::new(
+            2,
+            &reader::Work {
+                compressor: compressor.chan().clone(),
+                writer: writer.chan().clone(),
+            },
+        );
         Self {
             reader,
             _compressor: compressor,
@@ -69,8 +75,8 @@ trait WorkHandler<WorkItem> {
 }
 
 trait BgWork {
-    type WorkItem: Send + Sync + 'static;
-    type Handler: WorkHandler<Self::WorkItem> + Send + 'static;
+    type Item: Send + Sync + 'static;
+    type Handler: WorkHandler<Self::Item> + Send + 'static;
 
     const NAME: &'static str;
 
@@ -81,7 +87,7 @@ trait BgWork {
 }
 
 struct BgWorker<Work: BgWork> {
-    tx: crossbeam_channel::Sender<Work::WorkItem>,
+    tx: crossbeam_channel::Sender<Work::Item>,
     _joiner: ThreadJoiner,
 }
 
@@ -108,7 +114,7 @@ impl<Work: BgWork> BgWorker<Work> {
         }
     }
 
-    pub fn chan(&self) -> &crossbeam_channel::Sender<Work::WorkItem> {
+    pub fn chan(&self) -> &crossbeam_channel::Sender<Work::Item> {
         &self.tx
     }
 }

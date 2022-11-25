@@ -1,4 +1,4 @@
-use crate::threads::{compressing, writer, Context, ThreadJoiner};
+use crate::threads::{compressing, writer, BgWork, Context, WorkHandler};
 use crate::{check_compressible, seq_queue, try_read_all, ForceWritableFile, BLOCK_SIZE};
 use std::fs::File;
 use std::num::NonZeroUsize;
@@ -6,58 +6,32 @@ use std::path::Path;
 use std::sync::Arc;
 use std::{io, mem, thread};
 
-pub type Sender = crossbeam_channel::Sender<WorkItem>;
-
-pub struct WorkItem {
+pub(super) struct WorkItem {
     pub context: Arc<Context>,
 }
 
-pub struct ReaderThreads {
-    // Order is important: Drop happens top to bottom, drop the sender before trying to join the threads
-    tx: crossbeam_channel::Sender<WorkItem>,
-    _joiner: ThreadJoiner,
+pub(super) struct Work {
+    pub compressor: compressing::Sender,
+    pub writer: writer::Sender,
 }
 
-impl ReaderThreads {
-    pub fn new(
-        count: usize,
-        compressor_chan: &compressing::Sender,
-        writer_chan: &writer::Sender,
-    ) -> Self {
-        assert!(count > 0);
+impl BgWork for Work {
+    type Item = WorkItem;
+    type Handler = Handler;
+    const NAME: &'static str = "reader";
 
-        let (tx, rx) = crossbeam_channel::bounded(1);
-        let threads: Vec<_> = (0..count)
-            .map(|i| {
-                let rx = rx.clone();
-                let compressor_chan = compressor_chan.clone();
-                let writer_chan = writer_chan.clone();
-
-                thread::Builder::new()
-                    .name(format!("reader {i}"))
-                    .spawn(move || thread_impl(rx, compressor_chan, writer_chan))
-                    .unwrap()
-            })
-            .collect();
-
-        Self {
-            tx,
-            _joiner: ThreadJoiner::new(threads),
-        }
-    }
-
-    pub fn chan(&self) -> &Sender {
-        &self.tx
+    fn make_handler(&self) -> Self::Handler {
+        Handler::new(self.compressor.clone(), self.writer.clone())
     }
 }
 
-struct Reader {
+pub(super) struct Handler {
     buf: Box<[u8; BLOCK_SIZE]>,
     compressor: compressing::Sender,
     writer: writer::Sender,
 }
 
-impl Reader {
+impl Handler {
     fn new(compressor: compressing::Sender, writer: writer::Sender) -> Self {
         let buf = vec![0; BLOCK_SIZE].into_boxed_slice().try_into().unwrap();
         Self {
@@ -67,7 +41,7 @@ impl Reader {
         }
     }
 
-    fn handle_work_item(&mut self, item: WorkItem) -> io::Result<()> {
+    fn try_handle(&mut self, item: WorkItem) -> io::Result<()> {
         let WorkItem { context } = item;
         let path: &Path = &context.path;
         let metadata = path.metadata()?;
@@ -155,17 +129,9 @@ impl Reader {
     }
 }
 
-fn thread_impl(
-    rx: crossbeam_channel::Receiver<WorkItem>,
-    compressor_chan: compressing::Sender,
-    writer_chan: writer::Sender,
-) {
-    let _entered = tracing::debug_span!("reader thread").entered();
-    let mut reader = Reader::new(compressor_chan, writer_chan);
-    for item in rx {
-        let _entered =
-            tracing::info_span!("reading file", path=%item.context.path.display()).entered();
-        if let Err(e) = reader.handle_work_item(item) {
+impl WorkHandler<WorkItem> for Handler {
+    fn handle_item(&mut self, item: WorkItem) {
+        if let Err(e) = self.try_handle(item) {
             tracing::error!("unable to compress file: {}", e);
         }
     }

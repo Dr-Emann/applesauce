@@ -3,15 +3,15 @@ use crate::{compressor, seq_queue, BLOCK_SIZE};
 use std::sync::Arc;
 use std::{io, thread};
 
-pub type Sender = crossbeam_channel::Sender<WorkItem>;
+pub(super) type Sender = crossbeam_channel::Sender<WorkItem>;
 
-pub struct WorkItem {
+pub(super) struct WorkItem {
     pub context: Arc<Context>,
     pub data: Vec<u8>,
     pub slot: seq_queue::Slot<io::Result<writer::Chunk>>,
 }
 
-pub struct CompressionThreads {
+pub(super) struct CompressionThreads {
     // Order is important: Drop happens top to bottom, drop the sender before trying to join the threads
     tx: crossbeam_channel::Sender<WorkItem>,
     _joiner: ThreadJoiner,

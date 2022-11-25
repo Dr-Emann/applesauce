@@ -11,14 +11,14 @@ use std::io::{BufWriter, Seek, SeekFrom, Write};
 use std::os::macos::fs::MetadataExt;
 use std::sync::Arc;
 
-pub type Sender = crossbeam_channel::Sender<WorkItem>;
+pub(super) type Sender = crossbeam_channel::Sender<WorkItem>;
 
-pub struct Chunk {
+pub(super) struct Chunk {
     pub block: Vec<u8>,
     pub orig_size: u64,
 }
 
-pub struct WorkItem {
+pub(super) struct WorkItem {
     pub context: Arc<Context>,
     pub(crate) file: Arc<ForceWritableFile>,
     pub blocks: seq_queue::Receiver<io::Result<Chunk>>,
@@ -30,7 +30,7 @@ pub(super) struct Work {
 }
 
 impl BgWork for Work {
-    type WorkItem = WorkItem;
+    type Item = WorkItem;
     type Handler = Handler;
     const NAME: &'static str = "writer";
 
