@@ -1,15 +1,15 @@
 use crate::decmpfs::CompressionType;
 use crate::resource_fork::ResourceFork;
-use crate::threads::{Context, ThreadJoiner};
+use crate::threads::{BgWork, Context, WorkHandler};
 use crate::{
     compressor, decmpfs, num_blocks, reset_times, resource_fork, seq_queue, set_flags, xattr,
     ForceWritableFile,
 };
 use std::fs::{File, Metadata};
+use std::io;
 use std::io::{BufWriter, Seek, SeekFrom, Write};
 use std::os::macos::fs::MetadataExt;
 use std::sync::Arc;
-use std::{io, thread};
 
 pub type Sender = crossbeam_channel::Sender<WorkItem>;
 
@@ -25,36 +25,17 @@ pub struct WorkItem {
     pub metadata: Metadata,
 }
 
-pub struct WriterThreads {
-    // Order is important: Drop happens top to bottom, drop the sender before trying to join the threads
-    tx: crossbeam_channel::Sender<WorkItem>,
-    _joiner: ThreadJoiner,
+pub(super) struct Work {
+    pub compressor_kind: compressor::Kind,
 }
 
-impl WriterThreads {
-    pub fn new(count: usize, compressor_kind: compressor::Kind) -> Self {
-        assert!(count > 0);
+impl BgWork for Work {
+    type WorkItem = WorkItem;
+    type Handler = Handler;
+    const NAME: &'static str = "writer";
 
-        let (tx, rx) = crossbeam_channel::bounded(1);
-        let threads: Vec<_> = (0..count)
-            .map(|i| {
-                let rx = rx.clone();
-
-                thread::Builder::new()
-                    .name(format!("writer {i}"))
-                    .spawn(move || thread_impl(compressor_kind, rx))
-                    .unwrap()
-            })
-            .collect();
-
-        Self {
-            tx,
-            _joiner: ThreadJoiner::new(threads),
-        }
-    }
-
-    pub fn chan(&self) -> &Sender {
-        &self.tx
+    fn make_handler(&self) -> Handler {
+        Handler::new(self.compressor_kind)
     }
 }
 
@@ -63,13 +44,13 @@ enum WriteDest {
     BlocksWritten,
 }
 
-struct Writer {
+pub(super) struct Handler {
     compressor_kind: compressor::Kind,
     decomp_xattr_val_buf: Vec<u8>,
     block_sizes: Vec<u32>,
 }
 
-impl Writer {
+impl Handler {
     fn new(compressor_kind: compressor::Kind) -> Self {
         Self {
             compressor_kind,
@@ -136,7 +117,46 @@ impl Writer {
         Ok(WriteDest::BlocksWritten)
     }
 
-    fn handle_work_item(&mut self, item: WorkItem) {
+    #[tracing::instrument(level = "debug", skip_all, err)]
+    fn finish_xattrs<W: Write + Seek>(
+        &mut self,
+        file: &File,
+        file_size: u64,
+        write_dest: WriteDest,
+        mut resource_fork: W,
+    ) -> io::Result<()> {
+        let (storage, extra_data) = match write_dest {
+            WriteDest::Xattr { data } => (decmpfs::Storage::Xattr, data),
+            WriteDest::BlocksWritten => (decmpfs::Storage::ResourceFork, Vec::new()),
+        };
+
+        let compression_type = CompressionType::new(self.compressor_kind, storage);
+        let header = decmpfs::DiskHeader {
+            compression_type: compression_type.raw_type(),
+            uncompressed_size: file_size,
+        };
+
+        self.decomp_xattr_val_buf.clear();
+        self.decomp_xattr_val_buf
+            .reserve(decmpfs::DiskHeader::SIZE + extra_data.len());
+        header.write_into(&mut self.decomp_xattr_val_buf)?;
+
+        if storage == decmpfs::Storage::ResourceFork {
+            self.compressor_kind
+                .finish(&mut resource_fork, &self.block_sizes)?;
+            resource_fork.flush()?;
+        } else {
+            self.decomp_xattr_val_buf.extend_from_slice(&extra_data);
+        }
+        xattr::set(file, decmpfs::XATTR_NAME, &self.decomp_xattr_val_buf, 0)?;
+        Ok(())
+    }
+}
+
+impl WorkHandler<WorkItem> for Handler {
+    fn handle_item(&mut self, item: WorkItem) {
+        let _entered =
+            tracing::info_span!("writing file", path=%item.context.path.display()).entered();
         let file_size = item.metadata.len();
         let block_count: u32 = num_blocks(file_size).try_into().unwrap();
 
@@ -180,49 +200,5 @@ impl Writer {
         if res.is_ok() {
             tracing::info!("Successfully compressed {}", item.context.path.display());
         }
-    }
-
-    #[tracing::instrument(level = "debug", skip_all, err)]
-    fn finish_xattrs<W: Write + Seek>(
-        &mut self,
-        file: &File,
-        file_size: u64,
-        write_dest: WriteDest,
-        mut resource_fork: W,
-    ) -> io::Result<()> {
-        let (storage, extra_data) = match write_dest {
-            WriteDest::Xattr { data } => (decmpfs::Storage::Xattr, data),
-            WriteDest::BlocksWritten => (decmpfs::Storage::ResourceFork, Vec::new()),
-        };
-
-        let compression_type = CompressionType::new(self.compressor_kind, storage);
-        let header = decmpfs::DiskHeader {
-            compression_type: compression_type.raw_type(),
-            uncompressed_size: file_size,
-        };
-
-        self.decomp_xattr_val_buf.clear();
-        self.decomp_xattr_val_buf
-            .reserve(decmpfs::DiskHeader::SIZE + extra_data.len());
-        header.write_into(&mut self.decomp_xattr_val_buf)?;
-
-        if storage == decmpfs::Storage::ResourceFork {
-            self.compressor_kind
-                .finish(&mut resource_fork, &self.block_sizes)?;
-            resource_fork.flush()?;
-        } else {
-            self.decomp_xattr_val_buf.extend_from_slice(&extra_data);
-        }
-        xattr::set(file, decmpfs::XATTR_NAME, &self.decomp_xattr_val_buf, 0)?;
-        Ok(())
-    }
-}
-
-fn thread_impl(compressor_kind: compressor::Kind, rx: crossbeam_channel::Receiver<WorkItem>) {
-    let mut writer = Writer::new(compressor_kind);
-    for item in rx {
-        let _entered =
-            tracing::info_span!("writing file", path=%item.context.path.display()).entered();
-        writer.handle_work_item(item);
     }
 }

@@ -30,7 +30,7 @@ impl Drop for ThreadJoiner {
 pub struct BackgroundThreads {
     reader: reader::ReaderThreads,
     _compressor: compressing::CompressionThreads,
-    _writer: writer::WriterThreads,
+    _writer: BgWorker<writer::Work>,
 }
 
 pub struct Context {
@@ -45,7 +45,7 @@ impl BackgroundThreads {
             .unwrap_or(1);
 
         let compressor = compressing::CompressionThreads::new(compressor_threads, compressor_kind);
-        let writer = writer::WriterThreads::new(2, compressor_kind);
+        let writer = BgWorker::new(2, &writer::Work { compressor_kind });
         let reader = reader::ReaderThreads::new(2, compressor.chan(), writer.chan());
         Self {
             reader,
@@ -61,5 +61,63 @@ impl BackgroundThreads {
                 context: Arc::new(Context { path, progress }),
             })
             .unwrap()
+    }
+}
+
+trait WorkHandler<WorkItem> {
+    fn handle_item(&mut self, item: WorkItem);
+}
+
+trait BgWork {
+    type WorkItem: Send + Sync + 'static;
+    type Handler: WorkHandler<Self::WorkItem> + Send + 'static;
+
+    const NAME: &'static str;
+
+    fn make_handler(&self) -> Self::Handler;
+    fn queue_capacity(&self) -> usize {
+        1
+    }
+}
+
+struct BgWorker<Work: BgWork> {
+    tx: crossbeam_channel::Sender<Work::WorkItem>,
+    _joiner: ThreadJoiner,
+}
+
+impl<Work: BgWork> BgWorker<Work> {
+    pub fn new(thread_count: usize, work: &Work) -> Self {
+        assert!(thread_count > 0);
+
+        let (tx, rx) = crossbeam_channel::bounded(work.queue_capacity());
+        let threads: Vec<_> = (0..thread_count)
+            .map(|i| {
+                let rx = rx.clone();
+                let handler = work.make_handler();
+
+                thread::Builder::new()
+                    .name(format!("{} {}", Work::NAME, i))
+                    .spawn(move || handle_fn(rx, handler))
+                    .unwrap()
+            })
+            .collect();
+
+        Self {
+            tx,
+            _joiner: ThreadJoiner::new(threads),
+        }
+    }
+
+    pub fn chan(&self) -> &crossbeam_channel::Sender<Work::WorkItem> {
+        &self.tx
+    }
+}
+
+fn handle_fn<WorkItem, Handler: WorkHandler<WorkItem>>(
+    rx: crossbeam_channel::Receiver<WorkItem>,
+    mut handler: Handler,
+) {
+    for item in rx {
+        handler.handle_item(item);
     }
 }
