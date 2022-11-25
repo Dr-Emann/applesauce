@@ -1,7 +1,7 @@
-use crate::threads::{writer, Context, ThreadJoiner};
-use crate::{compressor, seq_queue, BLOCK_SIZE};
+use crate::threads::{writer, BgWork, Context, WorkHandler};
+use crate::{compressor, seq_queue, Compressor, BLOCK_SIZE};
+use std::io;
 use std::sync::Arc;
-use std::{io, thread};
 
 pub(super) type Sender = crossbeam_channel::Sender<WorkItem>;
 
@@ -11,52 +11,41 @@ pub(super) struct WorkItem {
     pub slot: seq_queue::Slot<io::Result<writer::Chunk>>,
 }
 
-pub(super) struct CompressionThreads {
-    // Order is important: Drop happens top to bottom, drop the sender before trying to join the threads
-    tx: crossbeam_channel::Sender<WorkItem>,
-    _joiner: ThreadJoiner,
+pub(super) struct Work {
+    pub compressor_kind: compressor::Kind,
 }
 
-impl CompressionThreads {
-    pub fn new(count: usize, compressor_kind: compressor::Kind) -> Self {
-        assert!(count > 0);
+impl BgWork for Work {
+    type Item = WorkItem;
+    type Handler = Handler;
+    const NAME: &'static str = "compressor";
 
-        let (tx, rx) = crossbeam_channel::bounded(8);
-        let threads: Vec<_> = (0..count)
-            .map(|i| {
-                let rx = rx.clone();
-
-                thread::Builder::new()
-                    .name(format!("compressor {i}"))
-                    .spawn(move || thread_impl(compressor_kind, rx))
-                    .unwrap()
-            })
-            .collect();
-
-        Self {
-            tx,
-            _joiner: ThreadJoiner::new(threads),
+    fn make_handler(&self) -> Self::Handler {
+        Handler {
+            compressor: self.compressor_kind.compressor().unwrap(),
+            buf: vec![0; BLOCK_SIZE + 1024],
         }
     }
 
-    pub fn chan(&self) -> &Sender {
-        &self.tx
+    fn queue_capacity(&self) -> usize {
+        8
     }
 }
 
-fn thread_impl(compressor_kind: compressor::Kind, rx: crossbeam_channel::Receiver<WorkItem>) {
-    let _entered = tracing::debug_span!("compressing thread").entered();
-    let mut compressor = compressor_kind.compressor().unwrap();
-    let mut buf = vec![0; BLOCK_SIZE + 1024];
+pub(super) struct Handler {
+    compressor: Compressor,
+    buf: Vec<u8>,
+}
 
-    for item in rx {
+impl WorkHandler<WorkItem> for Handler {
+    fn handle_item(&mut self, item: WorkItem) {
         let _entered =
-            tracing::info_span!("compressing block", path=%item.context.path.display()).entered();
-        let size = compressor.compress(&mut buf, &item.data).unwrap();
+            tracing::debug_span!("compressing block", path=%item.context.path.display()).entered();
+        let size = self.compressor.compress(&mut self.buf, &item.data).unwrap();
         debug_assert!(size != 0);
 
         let chunk = writer::Chunk {
-            block: buf[..size].to_vec(),
+            block: self.buf[..size].to_vec(),
             orig_size: item.data.len().try_into().unwrap(),
         };
         if item.slot.finish(Ok(chunk)).is_err() {

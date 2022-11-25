@@ -29,7 +29,7 @@ impl Drop for ThreadJoiner {
 
 pub struct BackgroundThreads {
     reader: BgWorker<reader::Work>,
-    _compressor: compressing::CompressionThreads,
+    _compressor: BgWorker<compressing::Work>,
     _writer: BgWorker<writer::Work>,
 }
 
@@ -44,7 +44,7 @@ impl BackgroundThreads {
             .map(NonZeroUsize::get)
             .unwrap_or(1);
 
-        let compressor = compressing::CompressionThreads::new(compressor_threads, compressor_kind);
+        let compressor = BgWorker::new(compressor_threads, &compressing::Work { compressor_kind });
         let writer = BgWorker::new(2, &writer::Work { compressor_kind });
         let reader = BgWorker::new(
             2,
