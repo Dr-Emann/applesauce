@@ -1,5 +1,4 @@
 use crate::compressor::CompressorImpl;
-use std::io::SeekFrom;
 use std::marker::PhantomData;
 use std::{io, mem};
 
@@ -90,7 +89,7 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         let block_count = u32::try_from(block_sizes.len()).unwrap();
         let mut offset = u32::try_from(Self::blocks_start(block_count.into())).unwrap();
 
-        writer.seek(SeekFrom::Start(0))?;
+        writer.rewind()?;
 
         for &size in block_sizes {
             writer.write_all(&u32::to_le_bytes(offset))?;

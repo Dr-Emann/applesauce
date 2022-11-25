@@ -55,7 +55,7 @@ impl super::CompressorImpl for Zlib {
             u32::try_from(writer.stream_position()?).map_err(|_| io::ErrorKind::InvalidInput)?;
         writer.write_all(&ZLIB_TRAILER)?;
 
-        writer.seek(SeekFrom::Start(0))?;
+        writer.rewind()?;
         writer.write_all(&u32::to_be_bytes(0x100))?;
         writer.write_all(&u32::to_be_bytes(compressed_data_size))?;
         writer.write_all(&u32::to_be_bytes(compressed_data_size - 0x100))?;
