@@ -191,7 +191,7 @@ impl Seek for ResourceFork<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::has_xattr;
+    use crate::xattr;
     use std::ffi::CString;
     use std::fs;
     use std::io::Write;
@@ -203,13 +203,13 @@ mod tests {
         let file = NamedTempFile::new().unwrap();
         let mut rfork = ResourceFork::new(file.as_file());
         let path = CString::new(file.path().as_os_str().as_bytes()).unwrap();
-        assert!(!has_xattr(&path, XATTR_NAME).unwrap());
+        assert!(!xattr::is_present(&path, XATTR_NAME).unwrap());
         assert_eq!(rfork.seek(SeekFrom::Start(10)).unwrap(), 10);
-        assert!(!has_xattr(&path, XATTR_NAME).unwrap());
+        assert!(!xattr::is_present(&path, XATTR_NAME).unwrap());
         assert_eq!(rfork.seek(SeekFrom::Current(1)).unwrap(), 11);
-        assert!(!has_xattr(&path, XATTR_NAME).unwrap());
+        assert!(!xattr::is_present(&path, XATTR_NAME).unwrap());
         assert_eq!(rfork.seek(SeekFrom::End(0)).unwrap(), 0);
-        assert!(!has_xattr(&path, XATTR_NAME).unwrap());
+        assert!(!xattr::is_present(&path, XATTR_NAME).unwrap());
     }
 
     #[test]
@@ -221,7 +221,7 @@ mod tests {
         let data = b"hi there";
         assert_eq!(rfork.write(data).unwrap(), data.len());
         rfork.flush().unwrap();
-        assert!(has_xattr(&path, XATTR_NAME).unwrap());
+        assert!(xattr::is_present(&path, XATTR_NAME).unwrap());
         let content = fs::read(file.path().join("..namedfork/rsrc")).unwrap();
         assert_eq!(content, data);
     }
