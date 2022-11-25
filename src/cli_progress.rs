@@ -1,6 +1,10 @@
 use applesauce::Progress;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::io::Write;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+const DELAY: Duration = Duration::from_millis(700);
 
 pub struct ProgressBars {
     style: ProgressStyle,
@@ -40,11 +44,13 @@ impl ProgressBars {
     pub fn add(&self, prefix: String) -> ProgressWithTotal {
         ProgressWithTotal {
             total: self.total_bar.clone(),
-            single: self
-                .bars
-                .add(ProgressBar::new(0))
+            single: ProgressBar::hidden()
                 .with_style(self.style.clone())
                 .with_prefix(prefix),
+            state: Mutex::new(State::Unattached {
+                bars: self.bars.clone(),
+                time_to_attach: Instant::now() + DELAY,
+            }),
         }
     }
 
@@ -57,24 +63,53 @@ impl ProgressBars {
     }
 }
 
+enum State {
+    Unattached {
+        bars: MultiProgress,
+        time_to_attach: Instant,
+    },
+    Attached,
+}
+
 pub struct ProgressWithTotal {
     total: ProgressBar,
     single: ProgressBar,
+    state: Mutex<State>,
+}
+
+impl ProgressWithTotal {
+    fn maybe_attach(&self) {
+        let mut state = self.state.lock().unwrap();
+        let now = Instant::now();
+        if let State::Unattached {
+            ref bars,
+            time_to_attach,
+        } = *state
+        {
+            if time_to_attach <= now {
+                bars.add(self.single.clone());
+                *state = State::Attached;
+            }
+        }
+    }
 }
 
 impl Progress for ProgressWithTotal {
     fn set_total_length(&self, length: u64) {
         self.total.inc_length(length);
         self.single.set_length(length);
+        self.maybe_attach();
     }
 
     fn increment(&self, amt: u64) {
         self.total.inc(amt);
         self.single.inc(amt);
+        self.maybe_attach();
     }
 
     fn message(&self, message: &str) {
         self.single.set_message(message.to_string());
+        self.maybe_attach();
     }
 }
 
