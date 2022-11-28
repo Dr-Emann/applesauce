@@ -33,7 +33,7 @@ impl fmt::Display for CompressionType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.compression_storage() {
             Some((compressor, storage)) => {
-                write!(f, "{} in {}", compressor, storage)
+                write!(f, "{compressor} in {storage}")
             }
             None => write!(f, "unknown compression type: {}", self.0),
         }

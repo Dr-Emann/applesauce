@@ -66,7 +66,7 @@ impl BackgroundThreads {
             .send(reader::WorkItem {
                 context: Arc::new(Context { path, progress }),
             })
-            .unwrap()
+            .unwrap();
     }
 }
 
