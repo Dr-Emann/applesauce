@@ -55,6 +55,8 @@ impl ProgressBars {
     }
 
     pub fn prefix_len(&self) -> usize {
+        // We want this to be a method, even though we don't use self
+        let _ = self;
         25
     }
 

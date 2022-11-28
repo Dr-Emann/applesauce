@@ -1,5 +1,5 @@
 use crate::cli_progress::{ProgressBarWriter, ProgressBars};
-use applesauce::{info, Compressor};
+use applesauce::{compressor, info};
 use cfg_if::cfg_if;
 use clap::Parser;
 use std::ffi::OsStr;
@@ -70,15 +70,15 @@ enum Compression {
     Lzvn,
 }
 
-impl Compression {
-    fn compressor(self) -> Compressor {
-        match self {
+impl From<Compression> for compressor::Kind {
+    fn from(c: Compression) -> Self {
+        match c {
             #[cfg(feature = "zlib")]
-            Compression::Zlib => Compressor::zlib(),
+            Compression::Zlib => compressor::Kind::Zlib,
             #[cfg(feature = "lzfse")]
-            Compression::Lzfse => Compressor::lzfse(),
+            Compression::Lzfse => compressor::Kind::Lzfse,
             #[cfg(feature = "lzvn")]
-            Compression::Lzvn => Compressor::lzvn(),
+            Compression::Lzvn => compressor::Kind::Lzvn,
         }
     }
 }
@@ -150,7 +150,7 @@ fn main() {
 
     match cli.command {
         Commands::Compress(Compress { paths, compression }) => {
-            let mut compressor = applesauce::FileCompressor::new(compression.compressor());
+            let mut compressor = applesauce::FileCompressor::new(compression.into());
             paths
                 .iter()
                 .flat_map(|root| WalkDir::new(root).into_iter())
@@ -224,7 +224,7 @@ fn main() {
                     println!(
                         "Compression savings: {:0.2}%",
                         (1.0 - info.compressed_fraction()) * 100.0
-                    )
+                    );
                 }
                 println!("Number of extended attributes: {}", info.xattr_count);
                 println!(
@@ -236,6 +236,7 @@ fn main() {
     }
 }
 
+#[must_use]
 pub fn truncate_path(path: &Path, width: usize) -> PathBuf {
     let mut segments: Vec<_> = path.components().collect();
     let mut total_len = path.as_os_str().len();

@@ -69,6 +69,7 @@ enum Data {
 }
 
 impl Compressor {
+    #[must_use]
     pub fn blocks_start(&self, block_count: u64) -> u64 {
         self.kind().blocks_start(block_count)
     }
@@ -153,6 +154,7 @@ impl Kind {
         Some(Compressor(data))
     }
 
+    #[must_use]
     pub fn blocks_start(self, block_count: u64) -> u64 {
         match self {
             #[cfg(feature = "zlib")]

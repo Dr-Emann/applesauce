@@ -1,5 +1,8 @@
 use crate::threads::{writer, BgWork, Context, WorkHandler};
-use crate::{compressor, seq_queue, Compressor, BLOCK_SIZE};
+use crate::{
+    compressor::{self, Compressor},
+    seq_queue, BLOCK_SIZE,
+};
 use std::io;
 use std::sync::Arc;
 

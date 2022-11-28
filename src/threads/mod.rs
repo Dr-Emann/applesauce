@@ -102,7 +102,7 @@ impl<Work: BgWork> BgWorker<Work> {
                 let handler = work.make_handler();
 
                 thread::Builder::new()
-                    .name(format!("{} {}", Work::NAME, i))
+                    .name(format!("{} {i}", Work::NAME))
                     .spawn(move || handle_fn(rx, handler))
                     .unwrap()
             })

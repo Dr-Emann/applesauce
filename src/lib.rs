@@ -11,9 +11,9 @@
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 compile_error!("applesauce only works on macos/ios");
 
+pub mod compressor;
 pub mod info;
 
-mod compressor;
 mod decmpfs;
 mod progress;
 mod resource_fork;
@@ -21,7 +21,6 @@ mod seq_queue;
 mod threads;
 mod xattr;
 
-pub use compressor::Compressor;
 use libc::c_char;
 use std::ffi::{CStr, CString};
 use std::fs::{File, Metadata, Permissions};
@@ -263,9 +262,9 @@ pub struct FileCompressor {
 
 impl FileCompressor {
     #[must_use]
-    pub fn new(compressor: Compressor) -> Self {
+    pub fn new(compressor_kind: compressor::Kind) -> Self {
         Self {
-            bg_threads: BackgroundThreads::new(compressor.kind()),
+            bg_threads: BackgroundThreads::new(compressor_kind),
         }
     }
 

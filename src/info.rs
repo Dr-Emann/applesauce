@@ -48,6 +48,7 @@ pub struct AfscFileInfo {
 }
 
 impl AfscFileInfo {
+    #[must_use]
     pub fn compressed_fraction(&self) -> f64 {
         self.on_disk_size as f64 / self.stat_size as f64
     }

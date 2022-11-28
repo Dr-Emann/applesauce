@@ -41,6 +41,7 @@ impl fmt::Display for CompressionType {
 }
 
 impl CompressionType {
+    #[must_use]
     pub const fn new(compressor: compressor::Kind, storage: Storage) -> Self {
         let val = match (compressor, storage) {
             (compressor::Kind::Zlib, Storage::Xattr) => 3,
@@ -52,6 +53,8 @@ impl CompressionType {
         };
         Self(val)
     }
+
+    #[must_use]
     pub const fn compression_storage(self) -> Option<(compressor::Kind, Storage)> {
         match self.0 {
             3 => Some((compressor::Kind::Zlib, Storage::Xattr)),
@@ -64,10 +67,12 @@ impl CompressionType {
         }
     }
 
+    #[must_use]
     pub const fn from_raw_type(n: u32) -> Self {
         Self(n)
     }
 
+    #[must_use]
     pub const fn raw_type(self) -> u32 {
         self.0
     }
