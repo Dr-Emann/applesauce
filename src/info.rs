@@ -59,6 +59,7 @@ pub fn get(path: &Path) -> io::Result<AfscFileInfo> {
 
     let on_disk_size = round_to_block_size(metadata.blocks() * 512, metadata.st_blksize());
 
+    // TODO: Try a local buffer for non-alloc fast path
     let path = CString::new(path.as_os_str().as_bytes())?;
 
     let mut total_xattr_size = 0;

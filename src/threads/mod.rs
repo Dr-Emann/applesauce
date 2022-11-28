@@ -7,6 +7,7 @@ use std::thread::JoinHandle;
 
 pub mod compressing;
 pub mod reader;
+pub mod scan;
 pub mod writer;
 
 struct ThreadJoiner {

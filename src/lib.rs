@@ -86,6 +86,7 @@ fn check_compressible(path: &Path, metadata: &Metadata) -> io::Result<()> {
         ));
     }
 
+    // TODO: Try a local buffer for non-alloc fast path
     let path = CString::new(path.as_os_str().as_bytes())?;
 
     let mut statfs_buf = MaybeUninit::<libc::statfs>::uninit();
