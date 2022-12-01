@@ -1,6 +1,7 @@
-use applesauce::Progress;
+use applesauce::progress::{Progress, Task};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::io::Write;
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -38,19 +39,6 @@ impl ProgressBars {
             style,
             total_bar,
             bars,
-        }
-    }
-
-    pub fn add(&self, prefix: String) -> ProgressWithTotal {
-        ProgressWithTotal {
-            total: self.total_bar.clone(),
-            single: ProgressBar::hidden()
-                .with_style(self.style.clone())
-                .with_prefix(prefix),
-            state: Mutex::new(State::Unattached {
-                bars: self.bars.clone(),
-                time_to_attach: Instant::now() + DELAY,
-            }),
         }
     }
 
@@ -96,20 +84,38 @@ impl ProgressWithTotal {
     }
 }
 
-impl Progress for ProgressWithTotal {
-    fn set_total_length(&self, length: u64) {
-        self.total.inc_length(length);
-        self.single.set_length(length);
-        self.maybe_attach();
-    }
+impl Progress for ProgressBars {
+    type Task = ProgressWithTotal;
 
+    fn sub_task(&self, path: &Path, size: u64) -> Self::Task {
+        let prefix = crate::truncate_path(path, self.prefix_len());
+
+        let total = self.total_bar.clone();
+        let single = ProgressBar::hidden()
+            .with_style(self.style.clone())
+            .with_prefix(prefix.to_string_lossy().into_owned());
+
+        single.set_length(size);
+        total.inc_length(size);
+        ProgressWithTotal {
+            total,
+            single,
+            state: Mutex::new(State::Unattached {
+                bars: self.bars.clone(),
+                time_to_attach: Instant::now() + DELAY,
+            }),
+        }
+    }
+}
+
+impl Task for ProgressWithTotal {
     fn increment(&self, amt: u64) {
         self.total.inc(amt);
         self.single.inc(amt);
         self.maybe_attach();
     }
 
-    fn message(&self, message: &str) {
+    fn error(&self, message: &str) {
         self.single.set_message(message.to_string());
         self.maybe_attach();
     }

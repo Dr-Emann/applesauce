@@ -1,9 +1,9 @@
-use crate::{compressor, Progress};
+use crate::compressor;
+use crate::progress::{Progress, Task};
 use std::num::NonZeroUsize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::thread::JoinHandle;
-use std::{iter, thread};
+use std::thread::{self, JoinHandle};
 
 pub mod compressing;
 pub mod reader;
@@ -36,7 +36,7 @@ pub struct BackgroundThreads {
 
 pub struct Context {
     path: PathBuf,
-    progress: Box<dyn Progress + Send + Sync>,
+    progress: Box<dyn Task + Send + Sync>,
 }
 
 impl BackgroundThreads {
@@ -46,7 +46,7 @@ impl BackgroundThreads {
             .unwrap_or(1);
 
         let compressor = BgWorker::new(compressor_threads, &compressing::Work { compressor_kind });
-        let writer = BgWorker::new(2, &writer::Work { compressor_kind });
+        let writer = BgWorker::new(4, &writer::Work { compressor_kind });
         let reader = BgWorker::new(
             2,
             &reader::Work {
@@ -61,30 +61,20 @@ impl BackgroundThreads {
         }
     }
 
-    pub fn scan(&self, path: PathBuf) {
-        struct NoProgress;
-        impl Progress for NoProgress {
-            fn set_total_length(&self, _: u64) {}
-            fn increment(&self, _: u64) {}
-            fn message(&self, _: &str) {}
-        }
+    pub fn scan<'a, P>(&self, paths: impl IntoIterator<Item = &'a Path>, progress: &P)
+    where
+        P: Progress + Send + Sync,
+        P::Task: Send + Sync + 'static,
+    {
         let chan = self.reader.chan();
-        scan::for_each_recursive(iter::once(path.as_ref()), |path, _metadata| {
-            let progress = Box::new(NoProgress);
+        scan::for_each_recursive(paths, |path, metadata| {
+            let progress = Box::new(progress.sub_task(&path, metadata.len()));
             chan.send(reader::WorkItem {
                 context: Arc::new(Context { path, progress }),
+                metadata,
             })
             .unwrap();
         })
-    }
-
-    pub fn submit(&self, path: PathBuf, progress: Box<dyn Progress + Send + Sync>) {
-        self.reader
-            .chan()
-            .send(reader::WorkItem {
-                context: Arc::new(Context { path, progress }),
-            })
-            .unwrap();
     }
 }
 

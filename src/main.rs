@@ -14,7 +14,6 @@ use tracing_subscriber::fmt::time;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
-use walkdir::WalkDir;
 
 mod cli_progress;
 
@@ -150,29 +149,10 @@ fn main() {
 
     match cli.command {
         Commands::Compress(Compress { paths, compression }) => {
-            let mut compressor = applesauce::FileCompressor::new(compression.into());
-            paths
-                .iter()
-                .flat_map(|root| WalkDir::new(root).into_iter())
-                .for_each(|entry| {
-                    let entry = match entry {
-                        Ok(entry) => entry,
-                        Err(e) => {
-                            tracing::error!("{e}");
-                            return;
-                        }
-                    };
-
-                    if !entry.file_type().is_file() {
-                        return;
-                    }
-
-                    let truncated_path = truncate_path(entry.path(), progress_bars.prefix_len());
-                    let pb = progress_bars.add(truncated_path.display().to_string());
-
-                    compressor.compress_path(entry.path().to_owned(), pb);
-                });
-            drop(compressor);
+            {
+                let mut compressor = applesauce::FileCompressor::new(compression.into());
+                compressor.recursive_compress(paths.iter().map(Path::new), &progress_bars);
+            }
             progress_bars.finish();
             tracing::info!("Finished compressing");
         }

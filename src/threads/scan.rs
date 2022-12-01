@@ -44,6 +44,10 @@ where
             return;
         }
     };
+    if !metadata.is_file() {
+        tracing::trace!("{} is not a file", path.display());
+        return;
+    }
     if let Err(e) = crate::check_compressible(path, &metadata) {
         tracing::debug!("{} is not compressible: {e}", path.display());
         return;

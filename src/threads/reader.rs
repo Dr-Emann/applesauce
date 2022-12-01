@@ -1,6 +1,6 @@
 use crate::threads::{compressing, writer, BgWork, Context, WorkHandler};
-use crate::{check_compressible, seq_queue, try_read_all, ForceWritableFile, BLOCK_SIZE};
-use std::fs::File;
+use crate::{seq_queue, try_read_all, ForceWritableFile, BLOCK_SIZE};
+use std::fs::{File, Metadata};
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
@@ -8,6 +8,7 @@ use std::{io, mem, thread};
 
 pub(super) struct WorkItem {
     pub context: Arc<Context>,
+    pub metadata: Metadata,
 }
 
 pub(super) struct Work {
@@ -22,6 +23,11 @@ impl BgWork for Work {
 
     fn make_handler(&self) -> Self::Handler {
         Handler::new(self.compressor.clone(), self.writer.clone())
+    }
+
+    fn queue_capacity(&self) -> usize {
+        // Allow quite a few queued up paths, to allow the total progress bar to be accurate
+        1024
     }
 }
 
@@ -42,13 +48,8 @@ impl Handler {
     }
 
     fn try_handle(&mut self, item: WorkItem) -> io::Result<()> {
-        let WorkItem { context } = item;
+        let WorkItem { context, metadata } = item;
         let path: &Path = &context.path;
-        let metadata = path.metadata()?;
-
-        context.progress.set_total_length(metadata.len());
-
-        check_compressible(path, &metadata)?;
 
         let file_size = metadata.len();
         let file = Arc::new(ForceWritableFile::open(path, &metadata)?);
@@ -120,6 +121,7 @@ impl Handler {
             }
         }
         if total_read != expected_len {
+            // TODO: The writer doesn't know!
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 "file size changed while reading",

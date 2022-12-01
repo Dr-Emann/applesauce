@@ -1,21 +1,12 @@
-use indicatif::ProgressBar;
+use std::path::Path;
 
 pub trait Progress {
-    fn set_total_length(&self, length: u64);
-    fn increment(&self, amt: u64);
-    fn message(&self, message: &str);
+    type Task: Task;
+
+    fn sub_task(&self, path: &Path, size: u64) -> Self::Task;
 }
 
-impl Progress for ProgressBar {
-    fn set_total_length(&self, length: u64) {
-        self.set_length(length);
-    }
-
-    fn increment(&self, amt: u64) {
-        self.inc(amt);
-    }
-
-    fn message(&self, message: &str) {
-        self.println(message);
-    }
+pub trait Task {
+    fn increment(&self, amt: u64);
+    fn error(&self, message: &str);
 }

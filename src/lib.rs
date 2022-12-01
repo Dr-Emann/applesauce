@@ -13,9 +13,9 @@ compile_error!("applesauce only works on macos/ios");
 
 pub mod compressor;
 pub mod info;
+pub mod progress;
 
 mod decmpfs;
-mod progress;
 mod resource_fork;
 mod seq_queue;
 mod threads;
@@ -31,7 +31,7 @@ use std::os::macos::fs::MetadataExt as _;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 use std::os::unix::io::AsRawFd;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::{fs, io, mem, ptr};
 
 macro_rules! cstr {
@@ -42,10 +42,9 @@ macro_rules! cstr {
     }};
 }
 
+use crate::progress::Progress;
 use crate::threads::BackgroundThreads;
 pub(crate) use cstr;
-
-pub use progress::Progress;
 
 const BLOCK_SIZE: usize = 0x10000;
 
@@ -269,14 +268,16 @@ impl FileCompressor {
         }
     }
 
-    #[tracing::instrument(skip_all, fields(path = %path.display()))]
-    pub fn compress_path(
+    #[tracing::instrument(skip_all)]
+    pub fn recursive_compress<'a, P>(
         &mut self,
-        path: PathBuf,
-        progress: impl Progress + Send + Sync + 'static,
-    ) {
-        let progress: Box<dyn Progress + Send + Sync> = Box::new(progress);
-        self.bg_threads.submit(path, progress);
+        paths: impl IntoIterator<Item = &'a Path>,
+        progress: &P,
+    ) where
+        P: Progress + Send + Sync,
+        P::Task: Send + Sync + 'static,
+    {
+        self.bg_threads.scan(paths, progress);
     }
 }
 
@@ -329,14 +330,21 @@ const fn round_to_block_size(size: u64, block_size: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::progress::{Progress, Task};
+    use std::iter;
     use tempfile::TempDir;
-    use walkdir::WalkDir;
 
     struct NoProgress;
-    impl Progress for NoProgress {
-        fn set_total_length(&self, _length: u64) {}
+    impl Task for NoProgress {
         fn increment(&self, _amt: u64) {}
-        fn message(&self, _message: &str) {}
+        fn error(&self, _message: &str) {}
+    }
+    impl Progress for NoProgress {
+        type Task = NoProgress;
+
+        fn sub_task(&self, _path: &Path, _size: u64) -> Self::Task {
+            NoProgress
+        }
     }
 
     fn populate_dir(dir: &Path) {
@@ -366,10 +374,7 @@ mod tests {
         populate_dir(dir);
 
         let mut fc = FileCompressor::new(compressor_kind);
-        for entry in WalkDir::new(dir) {
-            let entry = entry.unwrap();
-            fc.compress_path(entry.path().to_owned(), NoProgress);
-        }
+        fc.recursive_compress(iter::once(dir), &NoProgress);
     }
 
     #[cfg(feature = "zlib")]
