@@ -37,6 +37,13 @@ where
         }
     };
     let path = entry.path();
+
+    // We explicitly only want actual files
+    #[allow(clippy::filetype_is_file)]
+    if !entry.file_type().map_or(false, |ty| ty.is_file()) {
+        return;
+    }
+
     let metadata = match entry.metadata() {
         Ok(metadata) => metadata,
         Err(e) => {
@@ -44,10 +51,6 @@ where
             return;
         }
     };
-    if !metadata.is_file() {
-        tracing::trace!("{} is not a file", path.display());
-        return;
-    }
     if let Err(e) = crate::check_compressible(path, &metadata) {
         tracing::debug!("{} is not compressible: {e}", path.display());
         return;
