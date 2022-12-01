@@ -325,3 +325,71 @@ const fn round_to_block_size(size: u64, block_size: u64) -> u64 {
         r => size + (block_size - r),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use walkdir::WalkDir;
+
+    struct NoProgress;
+    impl Progress for NoProgress {
+        fn set_total_length(&self, _length: u64) {}
+        fn increment(&self, _amt: u64) {}
+        fn message(&self, _message: &str) {}
+    }
+
+    fn populate_dir(dir: &Path) {
+        // Medium files
+        for i in 0u8..=0xFF {
+            let p = dir.join(format!("{i}"));
+            fs::write(p, vec![i; usize::from(i) * 1024]).unwrap();
+        }
+
+        let subdir = dir.join("subdir");
+        fs::create_dir(&subdir).unwrap();
+        // Tiny Files
+        for i in 0u8..=0xFF {
+            let p = subdir.join(format!("{i}"));
+            fs::write(p, vec![i; usize::from(i)]).unwrap();
+        }
+
+        let big_file = dir.join("BIG");
+        let mut big_content = Vec::new();
+        for i in 0u8..=0xFF {
+            big_content.extend_from_slice(&[i; 1234]);
+        }
+        fs::write(big_file, big_content).unwrap();
+    }
+
+    fn compress_folder(compressor_kind: compressor::Kind, dir: &Path) {
+        populate_dir(dir);
+
+        let mut fc = FileCompressor::new(compressor_kind);
+        for entry in WalkDir::new(dir) {
+            let entry = entry.unwrap();
+            fc.compress_path(entry.path().to_owned(), NoProgress);
+        }
+    }
+
+    #[cfg(feature = "zlib")]
+    #[test]
+    fn compress_zlib() {
+        let dir = TempDir::new().unwrap();
+        compress_folder(compressor::Kind::Zlib, dir.path());
+    }
+
+    #[cfg(feature = "lzvn")]
+    #[test]
+    fn compress_lzvn() {
+        let dir = TempDir::new().unwrap();
+        compress_folder(compressor::Kind::Lzvn, dir.path());
+    }
+
+    #[cfg(feature = "lzfse")]
+    #[test]
+    fn compress_lzfse() {
+        let dir = TempDir::new().unwrap();
+        compress_folder(compressor::Kind::Lzfse, dir.path());
+    }
+}

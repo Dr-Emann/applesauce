@@ -2,8 +2,8 @@ use crate::{compressor, Progress};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::thread;
 use std::thread::JoinHandle;
+use std::{iter, thread};
 
 pub mod compressing;
 pub mod reader;
@@ -59,6 +59,23 @@ impl BackgroundThreads {
             _compressor: compressor,
             _writer: writer,
         }
+    }
+
+    pub fn scan(&self, path: PathBuf) {
+        struct NoProgress;
+        impl Progress for NoProgress {
+            fn set_total_length(&self, _: u64) {}
+            fn increment(&self, _: u64) {}
+            fn message(&self, _: &str) {}
+        }
+        let chan = self.reader.chan();
+        scan::for_each_recursive(iter::once(path.as_ref()), |path, _metadata| {
+            let progress = Box::new(NoProgress);
+            chan.send(reader::WorkItem {
+                context: Arc::new(Context { path, progress }),
+            })
+            .unwrap();
+        })
     }
 
     pub fn submit(&self, path: PathBuf, progress: Box<dyn Progress + Send + Sync>) {
