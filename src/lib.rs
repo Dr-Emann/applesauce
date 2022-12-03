@@ -17,6 +17,7 @@ pub mod progress;
 
 mod decmpfs;
 mod resource_fork;
+mod scan;
 mod seq_queue;
 mod threads;
 mod xattr;

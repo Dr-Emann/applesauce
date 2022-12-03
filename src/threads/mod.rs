@@ -1,5 +1,5 @@
-use crate::compressor;
 use crate::progress::{Progress, Task};
+use crate::{compressor, scan};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -7,7 +7,6 @@ use std::thread::{self, JoinHandle};
 
 pub mod compressing;
 pub mod reader;
-pub mod scan;
 pub mod writer;
 
 struct ThreadJoiner {
