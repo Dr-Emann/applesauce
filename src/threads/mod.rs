@@ -44,7 +44,13 @@ impl BackgroundThreads {
             .map(NonZeroUsize::get)
             .unwrap_or(1);
 
-        let compressor = BgWorker::new(compressor_threads, &compressing::Work { compressor_kind });
+        let compressor = BgWorker::new(
+            compressor_threads,
+            &compressing::Work {
+                compressor_kind,
+                compress: true,
+            },
+        );
         let writer = BgWorker::new(4, &writer::Work { compressor_kind });
         let reader = BgWorker::new(
             2,

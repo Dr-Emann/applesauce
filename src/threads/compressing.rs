@@ -16,6 +16,7 @@ pub(super) struct WorkItem {
 
 pub(super) struct Work {
     pub compressor_kind: compressor::Kind,
+    pub compress: bool,
 }
 
 impl BgWork for Work {
@@ -26,6 +27,7 @@ impl BgWork for Work {
     fn make_handler(&self) -> Self::Handler {
         Handler {
             compressor: self.compressor_kind.compressor().unwrap(),
+            compress: self.compress,
             buf: vec![0; BLOCK_SIZE + 1024],
         }
     }
@@ -37,6 +39,7 @@ impl BgWork for Work {
 
 pub(super) struct Handler {
     compressor: Compressor,
+    compress: bool,
     buf: Vec<u8>,
 }
 
@@ -44,7 +47,22 @@ impl WorkHandler<WorkItem> for Handler {
     fn handle_item(&mut self, item: WorkItem) {
         let _entered =
             tracing::debug_span!("compressing block", path=%item.context.path.display()).entered();
-        let size = self.compressor.compress(&mut self.buf, &item.data).unwrap();
+
+        let f = if self.compress {
+            Compressor::compress
+        } else {
+            Compressor::decompress
+        };
+        let size = match f(&mut self.compressor, &mut self.buf, &item.data) {
+            Ok(size) => size,
+            Err(e) => {
+                if item.slot.finish(Err(e)).is_err() {
+                    // This should only be because of a failure already reported by the writer
+                    tracing::debug!("unable to finish slot");
+                }
+                return;
+            }
+        };
         debug_assert!(size != 0);
 
         let chunk = writer::Chunk {
