@@ -28,7 +28,7 @@ indicatif = "0.17.1"
 libc = "0.2.127"
 memchr = "2.5"
 tracing = "0.1.36"
-tracing-chrome = "0.6.0"
+tracing-chrome = "0.7.0"
 tracing-subscriber = { version = "0.3.16", features = ["fmt"] }
 walkdir = "2.3.2"
 
