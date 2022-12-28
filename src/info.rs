@@ -1,4 +1,4 @@
-use crate::{decmpfs, resource_fork, round_to_block_size, xattr};
+use crate::{decmpfs, format_bytes, resource_fork, round_to_block_size, xattr};
 use std::error::Error;
 use std::ffi::{CStr, CString};
 use std::os::macos::fs::MetadataExt as _;
@@ -6,6 +6,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt as _;
 use std::path::Path;
 use std::{fmt, io};
+use walkdir::WalkDir;
 
 pub use decmpfs::CompressionType;
 
@@ -52,6 +53,82 @@ impl AfscFileInfo {
     pub fn compressed_fraction(&self) -> f64 {
         self.on_disk_size as f64 / self.stat_size as f64
     }
+}
+
+#[derive(Default, Copy, Clone)]
+#[non_exhaustive]
+pub struct AfscFolderInfo {
+    pub num_files: u32,
+    pub num_folders: u32,
+    pub num_compressed_files: u32,
+
+    pub total_uncompressed_size: u64,
+    pub total_compressed_size: u64,
+}
+
+impl AfscFolderInfo {
+    #[must_use]
+    pub fn compressed_fraction(&self) -> f64 {
+        self.total_compressed_size as f64 / self.total_uncompressed_size as f64
+    }
+
+    #[must_use]
+    pub fn compression_savings_fraction(&self) -> f64 {
+        1.0 - self.compressed_fraction()
+    }
+}
+
+impl fmt::Display for AfscFolderInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "Number of compressed files: {}",
+            self.num_compressed_files
+        )?;
+        writeln!(f, "Total number of files: {}", self.num_files)?;
+        writeln!(f, "Total number of folders: {}", self.num_folders)?;
+        writeln!(
+            f,
+            "Total uncompressed size: {} ({})",
+            format_bytes(self.total_uncompressed_size),
+            self.total_uncompressed_size
+        )?;
+        writeln!(
+            f,
+            "Total compressed size: {} ({})",
+            format_bytes(self.total_compressed_size),
+            self.total_compressed_size
+        )?;
+        writeln!(
+            f,
+            "Compression Savings: {:.1}%",
+            self.compression_savings_fraction() * 100.0,
+        )?;
+
+        Ok(())
+    }
+}
+
+pub fn get_recursive(path: &Path) -> io::Result<AfscFolderInfo> {
+    let mut result = AfscFolderInfo::default();
+    for entry in WalkDir::new(path) {
+        let entry = entry?;
+        let file_type = entry.file_type();
+        if file_type.is_file() {
+            let info = get(entry.path())?;
+            result.num_files += 1;
+            if info.is_compressed {
+                result.num_compressed_files += 1;
+                result.total_compressed_size += info.on_disk_size;
+            } else {
+                result.total_compressed_size += info.stat_size;
+            }
+            result.total_uncompressed_size += info.stat_size;
+        } else if file_type.is_dir() {
+            result.num_folders += 1;
+        }
+    }
+    Ok(result)
 }
 
 pub fn get(path: &Path) -> io::Result<AfscFileInfo> {

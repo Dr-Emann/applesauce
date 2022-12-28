@@ -24,6 +24,7 @@ mod xattr;
 
 use libc::c_char;
 use std::ffi::{CStr, CString};
+use std::fmt;
 use std::fs::{File, Metadata, Permissions};
 use std::io::prelude::*;
 use std::mem::MaybeUninit;
@@ -326,6 +327,10 @@ const fn round_to_block_size(size: u64, block_size: u64) -> u64 {
         0 => size,
         r => size + (block_size - r),
     }
+}
+
+fn format_bytes(byte_size: u64) -> impl fmt::Display {
+    humansize::SizeFormatter::new(byte_size, humansize::BINARY)
 }
 
 #[cfg(test)]

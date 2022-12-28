@@ -25,6 +25,7 @@ dependencies = [
  "clap",
  "crossbeam-channel",
  "flate2",
+ "humansize",
  "ignore",
  "indicatif",
  "libc",
@@ -223,6 +224,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "humansize"
+version = "2.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e682e2bd70ecbcce5209f11a992a4ba001fea8e60acf7860ce007629e6d2756"
+dependencies = [
+ "libm",
+]
+
+[[package]]
 name = "ignore"
 version = "0.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -300,6 +310,12 @@ name = "libc"
 version = "0.2.139"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "201de327520df007757c1f0adce6e827fe8562fbc28bfd9c15571c66ca1f5f79"
+
+[[package]]
+name = "libm"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
 
 [[package]]
 name = "linux-raw-sys"
