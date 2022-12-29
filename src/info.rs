@@ -114,6 +114,8 @@ pub fn get_recursive(path: &Path) -> io::Result<AfscFolderInfo> {
     for entry in WalkDir::new(path) {
         let entry = entry?;
         let file_type = entry.file_type();
+
+        #[allow(clippy::filetype_is_file)]
         if file_type.is_file() {
             let info = get(entry.path())?;
             result.num_files += 1;
