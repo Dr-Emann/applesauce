@@ -198,12 +198,45 @@ impl Seek for ResourceFork<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::xattr;
     use std::ffi::CString;
     use std::fs;
     use std::io::Write;
     use std::os::unix::ffi::OsStrExt;
     use tempfile::NamedTempFile;
+
+    mod xattr {
+        use std::ffi::CStr;
+        use std::{io, ptr};
+
+        pub fn len(path: &CStr, xattr_name: &CStr) -> io::Result<Option<usize>> {
+            // SAFETY:
+            // path/xattr_name are valid pointers and are null terminated
+            // value == NULL, size == 0 is allowed to just return the size
+            let rc = unsafe {
+                libc::getxattr(
+                    path.as_ptr(),
+                    xattr_name.as_ptr(),
+                    ptr::null_mut(),
+                    0,
+                    0,
+                    libc::XATTR_SHOWCOMPRESSION,
+                )
+            };
+            if rc == -1 {
+                let last_error = io::Error::last_os_error();
+                return if last_error.raw_os_error() == Some(libc::ENOATTR) {
+                    Ok(None)
+                } else {
+                    Err(last_error)
+                };
+            }
+            Ok(Some(rc as usize))
+        }
+
+        pub fn is_present(path: &CStr, xattr_name: &CStr) -> io::Result<bool> {
+            len(path, xattr_name).map(|len| len.is_some())
+        }
+    }
 
     #[test]
     fn no_create_without_write() {

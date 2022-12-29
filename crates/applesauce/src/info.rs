@@ -1,4 +1,4 @@
-use crate::{decmpfs, format_bytes, round_to_block_size, xattr};
+use crate::{decmpfs, round_to_block_size, xattr};
 use std::error::Error;
 use std::ffi::{CStr, CString};
 use std::os::macos::fs::MetadataExt as _;
@@ -75,37 +75,6 @@ impl AfscFolderInfo {
     #[must_use]
     pub fn compression_savings_fraction(&self) -> f64 {
         1.0 - self.compressed_fraction()
-    }
-}
-
-impl fmt::Display for AfscFolderInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "Number of compressed files: {}",
-            self.num_compressed_files
-        )?;
-        writeln!(f, "Total number of files: {}", self.num_files)?;
-        writeln!(f, "Total number of folders: {}", self.num_folders)?;
-        writeln!(
-            f,
-            "Total uncompressed size: {} ({})",
-            format_bytes(self.total_uncompressed_size),
-            self.total_uncompressed_size
-        )?;
-        writeln!(
-            f,
-            "Total compressed size: {} ({})",
-            format_bytes(self.total_compressed_size),
-            self.total_compressed_size
-        )?;
-        writeln!(
-            f,
-            "Compression Savings: {:.1}%",
-            self.compression_savings_fraction() * 100.0,
-        )?;
-
-        Ok(())
     }
 }
 

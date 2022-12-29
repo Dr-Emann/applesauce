@@ -23,7 +23,6 @@ version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
  "flate2",
- "humansize",
  "ignore",
  "libc",
  "lzfse-sys",
@@ -43,6 +42,7 @@ dependencies = [
  "cfg-if",
  "clap",
  "flate2",
+ "humansize",
  "indicatif",
  "tracing",
  "tracing-chrome",

@@ -22,7 +22,6 @@ lzvn = ["dep:lzfse-sys"]
 resource-fork = { path = "../resource-fork" }
 
 crossbeam-channel = "0.5.6"
-humansize = "2.1"
 ignore = "0.4.18"
 libc = "0.2.127"
 memchr = "2.5"

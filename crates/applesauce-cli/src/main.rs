@@ -3,6 +3,7 @@ use applesauce::{compressor, info};
 use cfg_if::cfg_if;
 use clap::Parser;
 use std::ffi::OsStr;
+use std::fmt;
 use std::fs::File;
 use std::io::{BufWriter, LineWriter};
 use std::path::{Component, Path, PathBuf};
@@ -171,7 +172,25 @@ fn main() {
                             continue;
                         }
                     };
-                    println!("\n{}:\n{}", path.display(), info);
+                    println!("\n{}:", path.display());
+
+                    println!("Number of compressed files: {}", info.num_compressed_files);
+                    println!("Total number of files: {}", info.num_files);
+                    println!("Total number of folders: {}", info.num_folders);
+                    println!(
+                        "Total uncompressed size: {} ({})",
+                        format_bytes(info.total_uncompressed_size),
+                        info.total_uncompressed_size
+                    );
+                    println!(
+                        "Total compressed size: {} ({})",
+                        format_bytes(info.total_compressed_size),
+                        info.total_compressed_size
+                    );
+                    println!(
+                        "Compression Savings: {:.1}%",
+                        info.compression_savings_fraction() * 100.0,
+                    );
                 } else {
                     let info = info::get(&path);
                     let info = match info {
@@ -272,6 +291,10 @@ pub fn truncate_path(path: &Path, width: usize) -> PathBuf {
     }
 
     path
+}
+
+fn format_bytes(byte_size: u64) -> impl fmt::Display {
+    humansize::SizeFormatter::new(byte_size, humansize::BINARY)
 }
 
 #[test]
