@@ -35,6 +35,7 @@ pub struct BackgroundThreads {
 
 pub struct Context {
     path: PathBuf,
+    orig_size: u64,
     progress: Box<dyn Task + Send + Sync>,
 }
 
@@ -75,7 +76,11 @@ impl BackgroundThreads {
         scan::for_each_recursive(paths, |path, metadata| {
             let progress = Box::new(progress.sub_task(&path, metadata.len()));
             chan.send(reader::WorkItem {
-                context: Arc::new(Context { path, progress }),
+                context: Arc::new(Context {
+                    path,
+                    progress,
+                    orig_size: metadata.len(),
+                }),
                 metadata,
             })
             .unwrap();

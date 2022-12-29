@@ -27,7 +27,7 @@ impl BgWork for Work {
 
     fn queue_capacity(&self) -> usize {
         // Allow quite a few queued up paths, to allow the total progress bar to be accurate
-        1024
+        100 * 1024
     }
 }
 

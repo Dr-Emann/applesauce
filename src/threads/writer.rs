@@ -68,6 +68,17 @@ impl Handler {
     ) -> io::Result<WriteDest> {
         let block_span = tracing::debug_span!("write block");
 
+        let mut total_compressed_size = 0;
+        let mut add_compressed_chunk = |chunk: &Chunk| -> io::Result<()> {
+            total_compressed_size += u64::try_from(chunk.block.len()).unwrap();
+            if total_compressed_size > context.orig_size {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "file grew when compressed",
+                ));
+            }
+            Ok(())
+        };
         let chunk1 = match chunks.recv() {
             Ok(chunk) => chunk?,
             Err(_) => return Ok(WriteDest::Xattr { data: Vec::new() }),
@@ -76,6 +87,7 @@ impl Handler {
             Ok(chunk) => chunk?,
             Err(_) => {
                 // no second block
+                add_compressed_chunk(&chunk1)?;
                 let result = if chunk1.block.len() <= decmpfs::MAX_XATTR_DATA_SIZE {
                     tracing::debug!("compressible inside xattr");
                     WriteDest::Xattr { data: chunk1.block }
@@ -92,6 +104,7 @@ impl Handler {
         };
         {
             let _enter = block_span.enter();
+            add_compressed_chunk(&chunk1)?;
             self.block_sizes
                 .push(chunk1.block.len().try_into().unwrap());
             writer.write_all(&chunk1.block)?;
@@ -99,6 +112,7 @@ impl Handler {
         }
         {
             let _enter = block_span.enter();
+            add_compressed_chunk(&chunk2)?;
             self.block_sizes
                 .push(chunk2.block.len().try_into().unwrap());
             writer.write_all(&chunk2.block)?;
@@ -107,7 +121,10 @@ impl Handler {
         drop((chunk1, chunk2));
 
         for chunk in chunks {
-            let Chunk { block, orig_size } = chunk?;
+            let chunk = chunk?;
+            add_compressed_chunk(&chunk)?;
+
+            let Chunk { block, orig_size } = chunk;
             let _enter = block_span.enter();
 
             self.block_sizes.push(block.len().try_into().unwrap());
