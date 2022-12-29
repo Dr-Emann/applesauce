@@ -16,7 +16,6 @@ pub mod info;
 pub mod progress;
 
 mod decmpfs;
-mod resource_fork;
 mod scan;
 mod seq_queue;
 mod threads;
@@ -310,15 +309,6 @@ fn try_read_all<R: Read>(mut r: R, buf: &mut [u8]) -> io::Result<usize> {
 
     bulk_read_span.record("read_len", read_len);
     Ok(read_len)
-}
-
-#[must_use]
-const fn checked_add_signed(x: u64, i: i64) -> Option<u64> {
-    if i >= 0 {
-        x.checked_add(i as u64)
-    } else {
-        x.checked_sub(i.unsigned_abs())
-    }
 }
 
 #[must_use]

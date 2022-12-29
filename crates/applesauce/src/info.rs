@@ -1,4 +1,4 @@
-use crate::{decmpfs, format_bytes, resource_fork, round_to_block_size, xattr};
+use crate::{decmpfs, format_bytes, round_to_block_size, xattr};
 use std::error::Error;
 use std::ffi::{CStr, CString};
 use std::os::macos::fs::MetadataExt as _;

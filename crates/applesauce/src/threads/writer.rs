@@ -1,10 +1,9 @@
 use crate::decmpfs::CompressionType;
-use crate::resource_fork::ResourceFork;
 use crate::threads::{BgWork, Context, WorkHandler};
 use crate::{
-    compressor, decmpfs, num_blocks, reset_times, resource_fork, seq_queue, set_flags, xattr,
-    ForceWritableFile,
+    compressor, decmpfs, num_blocks, reset_times, seq_queue, set_flags, xattr, ForceWritableFile,
 };
+use resource_fork::ResourceFork;
 use std::fs::{File, Metadata};
 use std::io;
 use std::io::{BufWriter, Seek, SeekFrom, Write};

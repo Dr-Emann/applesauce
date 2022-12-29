@@ -19,6 +19,8 @@ lzvn = ["dep:lzfse-sys"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+resource-fork = { path = "../resource-fork" }
+
 crossbeam-channel = "0.5.6"
 humansize = "2.1"
 ignore = "0.4.18"

@@ -1,4 +1,3 @@
-use crate::checked_add_signed;
 use libc::XATTR_SHOWCOMPRESSION;
 use std::ffi::CStr;
 use std::fs::File;
@@ -6,7 +5,11 @@ use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::io::AsRawFd;
 use std::{cmp, io, ptr};
 
-pub const XATTR_NAME: &CStr = crate::cstr!("com.apple.ResourceFork");
+pub const XATTR_NAME: &CStr = {
+    let bytes: &'static [u8] = b"com.apple.ResourceFork\0";
+    // SAFETY: bytes are static, and null terminated, without internal nulls
+    unsafe { CStr::from_bytes_with_nul_unchecked(bytes) }
+};
 
 pub struct ResourceFork<'a> {
     file: &'a File,
@@ -174,12 +177,16 @@ impl Seek for ResourceFork<'_> {
                     }
                 }
                 let end: u64 = rc.try_into().unwrap();
-                let offset = checked_add_signed(end, i).ok_or(io::ErrorKind::InvalidInput)?;
+                let offset = end
+                    .checked_add_signed(i)
+                    .ok_or(io::ErrorKind::InvalidInput)?;
                 offset.try_into().map_err(|_| io::ErrorKind::InvalidInput)?
             }
             SeekFrom::Current(i) => {
-                let offset =
-                    checked_add_signed(self.offset.into(), i).ok_or(io::ErrorKind::InvalidInput)?;
+                let current_offset = u64::from(self.offset);
+                let offset = current_offset
+                    .checked_add_signed(i)
+                    .ok_or(io::ErrorKind::InvalidInput)?;
                 offset.try_into().map_err(|_| io::ErrorKind::InvalidInput)?
             }
         };
