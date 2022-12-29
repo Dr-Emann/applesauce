@@ -1,0 +1,28 @@
+[package]
+name = "applesauce-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "applesauce"
+path = "src/main.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["zlib", "lzfse", "lzvn"]
+
+zlib = ["applesauce/zlib"]
+lzfse = ["applesauce/lzfse"]
+lzvn = ["applesauce/lzvn"]
+
+[dependencies]
+applesauce = { path = "../applesauce", default-features = false }
+
+cfg-if = "1.0.0"
+clap = { version = "4.0", features = ["derive"] }
+indicatif = "0.17.1"
+tracing = "0.1"
+tracing-chrome = "0.7"
+tracing-subscriber = { version = "0.3.16", features = ["fmt"] }
+
+flate2 = { version = "1.0", optional = true }

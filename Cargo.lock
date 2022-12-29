@@ -21,22 +21,31 @@ dependencies = [
 name = "applesauce"
 version = "0.1.0"
 dependencies = [
- "cfg-if",
- "clap",
  "crossbeam-channel",
  "flate2",
  "humansize",
  "ignore",
- "indicatif",
  "libc",
  "lzfse-sys",
  "memchr",
  "sha2",
  "tempfile",
  "tracing",
+ "walkdir",
+]
+
+[[package]]
+name = "applesauce-cli"
+version = "0.1.0"
+dependencies = [
+ "applesauce",
+ "cfg-if",
+ "clap",
+ "flate2",
+ "indicatif",
+ "tracing",
  "tracing-chrome",
  "tracing-subscriber",
- "walkdir",
 ]
 
 [[package]]
