@@ -1,4 +1,4 @@
-use crate::cli_progress::{ProgressBarWriter, ProgressBars};
+use crate::progress::{ProgressBarWriter, ProgressBars};
 use applesauce::{compressor, info};
 use cfg_if::cfg_if;
 use clap::Parser;
@@ -15,7 +15,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
 
-mod cli_progress;
+mod progress;
 
 #[derive(Debug, clap::Parser)]
 #[command(author, version, about, long_about = None)]
