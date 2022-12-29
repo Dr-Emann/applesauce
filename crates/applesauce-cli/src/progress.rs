@@ -77,7 +77,7 @@ impl ProgressWithTotal {
         } = *state
         {
             if time_to_attach <= now {
-                bars.add(self.single.clone());
+                bars.insert(0, self.single.clone());
                 *state = State::Attached;
             }
         }
