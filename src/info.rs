@@ -55,7 +55,7 @@ impl AfscFileInfo {
     }
 }
 
-#[derive(Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone)]
 #[non_exhaustive]
 pub struct AfscFolderInfo {
     pub num_files: u32,

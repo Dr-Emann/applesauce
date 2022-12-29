@@ -339,6 +339,7 @@ mod tests {
     use crate::progress::{Progress, Task};
     use std::iter;
     use tempfile::TempDir;
+    use walkdir::WalkDir;
 
     struct NoProgress;
     impl Task for NoProgress {
@@ -353,7 +354,24 @@ mod tests {
         }
     }
 
+    fn recursive_hash(dir: &Path) -> Vec<u8> {
+        use sha2::Digest;
+        let mut hasher = sha2::Sha512::new();
+
+        for item in WalkDir::new(dir).sort_by_file_name() {
+            let item = item.unwrap();
+            if !item.file_type().is_dir() {
+                hasher.update(item.path().as_os_str().as_bytes());
+                hasher.update(fs::read(item.path()).unwrap());
+            }
+        }
+        hasher.finalize().to_vec()
+    }
+
     fn populate_dir(dir: &Path) {
+        // Empty file
+        fs::write(dir.join("EMPTY"), b"").unwrap();
+
         // Medium files
         for i in 0u8..=0xFF {
             let p = dir.join(format!("{i}"));
@@ -378,9 +396,18 @@ mod tests {
 
     fn compress_folder(compressor_kind: compressor::Kind, dir: &Path) {
         populate_dir(dir);
+        let old_hash = recursive_hash(dir);
 
         let mut fc = FileCompressor::new(compressor_kind);
         fc.recursive_compress(iter::once(dir), &NoProgress);
+        drop(fc);
+
+        let new_hash = recursive_hash(dir);
+        assert_eq!(old_hash, new_hash);
+
+        let info = info::get_recursive(dir).unwrap();
+        // These are very compressible files
+        assert!(info.compression_savings_fraction() > 0.5);
     }
 
     #[cfg(feature = "zlib")]
