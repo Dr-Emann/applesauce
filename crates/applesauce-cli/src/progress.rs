@@ -1,5 +1,6 @@
 use applesauce::progress::{Progress, Task};
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif::{HumanDuration, MultiProgress, ProgressBar, ProgressState, ProgressStyle};
+use std::fmt;
 use std::io::Write;
 use std::path::Path;
 use std::sync::Mutex;
@@ -22,14 +23,28 @@ impl ProgressBars {
 impl ProgressBars {
     pub fn new() -> Self {
         let bars = MultiProgress::new();
+        let smoothed_eta = |s: &ProgressState, w: &mut dyn fmt::Write| match (s.pos(), s.len()) {
+            (pos, Some(len)) if pos != 0 => write!(
+                w,
+                "{:#}",
+                HumanDuration(Duration::from_millis(
+                    (s.elapsed().as_millis() * (len as u128 - pos as u128) / (pos as u128)) as u64
+                ))
+            )
+            .unwrap(),
+            _ => write!(w, "-").unwrap(),
+        };
         let total_style = ProgressStyle::with_template(
-            "{prefix:>25.bold} {wide_bar:.green} {bytes:>11}/{total_bytes:<11} {eta:6}",
+            "{prefix:>25.bold} {wide_bar:.green} {bytes:>11}/{total_bytes:<11} {smoothed_eta:6}",
         )
-        .unwrap();
+        .unwrap()
+        .with_key("smoothed_eta", smoothed_eta);
         let style = ProgressStyle::with_template(
-            "{prefix:>25.dim} {wide_bar} {bytes:>11}/{total_bytes:<11} {eta:6}",
+            "{prefix:>25.dim} {wide_bar} {bytes:>11}/{total_bytes:<11} {smoothed_eta:6}",
         )
-        .unwrap();
+        .unwrap()
+        .with_key("smoothed_eta", smoothed_eta);
+
         let total_bar = bars
             .add(ProgressBar::new(0))
             .with_style(total_style)
