@@ -1,8 +1,7 @@
 use crate::threads::{compressing, writer, BgWork, Context, WorkHandler};
-use crate::{seq_queue, try_read_all, ForceWritableFile, BLOCK_SIZE};
+use crate::{seq_queue, try_read_all, BLOCK_SIZE};
 use std::fs::{File, Metadata};
 use std::num::NonZeroUsize;
-use std::path::Path;
 use std::sync::Arc;
 use std::{io, mem, thread};
 
@@ -49,10 +48,9 @@ impl Handler {
 
     fn try_handle(&mut self, item: WorkItem) -> io::Result<()> {
         let WorkItem { context, metadata } = item;
-        let path: &Path = &context.path;
+        let file = Arc::new(File::open(&context.path)?);
 
         let file_size = metadata.len();
-        let file = Arc::new(ForceWritableFile::open(path, &metadata)?);
         let (tx, rx) = seq_queue::bounded(
             thread::available_parallelism()
                 .map(NonZeroUsize::get)

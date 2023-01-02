@@ -23,16 +23,15 @@ mod xattr;
 
 use libc::c_char;
 use std::ffi::{CStr, CString};
-use std::fs::{File, Metadata, Permissions};
+use std::fs::{File, Metadata};
 use std::io::prelude::*;
 use std::mem::MaybeUninit;
-use std::ops::Deref;
 use std::os::macos::fs::MetadataExt as _;
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+use std::os::unix::fs::MetadataExt as _;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
-use std::{fs, io, mem, ptr};
+use std::{io, mem, ptr};
 
 macro_rules! cstr {
     ($s:literal) => {{
@@ -203,59 +202,6 @@ fn set_flags(file: &File, flags: libc::c_uint) -> io::Result<()> {
     }
 }
 
-struct ForceWritableFile {
-    file: File,
-    permissions: Option<Permissions>,
-}
-
-impl ForceWritableFile {
-    fn open(path: &Path, metadata: &Metadata) -> io::Result<Self> {
-        let old_perm = metadata.permissions();
-        let new_perm = Permissions::from_mode(
-            old_perm.mode() | u32::from(libc::S_IWUSR) | u32::from(libc::S_IRUSR),
-        );
-        let reset_permissions = if old_perm == new_perm {
-            None
-        } else {
-            fs::set_permissions(path, new_perm)?;
-            Some(old_perm)
-        };
-
-        let file = match File::options().read(true).write(true).open(path) {
-            Ok(file) => file,
-            Err(e) => {
-                if let Some(permissions) = reset_permissions {
-                    let _res = fs::set_permissions(path, permissions);
-                }
-                return Err(e);
-            }
-        };
-        Ok(Self {
-            file,
-            permissions: reset_permissions,
-        })
-    }
-}
-
-impl Deref for ForceWritableFile {
-    type Target = File;
-
-    fn deref(&self) -> &File {
-        &self.file
-    }
-}
-
-impl Drop for ForceWritableFile {
-    fn drop(&mut self) {
-        if let Some(permissions) = self.permissions.clone() {
-            let res = self.file.set_permissions(permissions);
-            if let Err(e) = res {
-                tracing::error!("unable to reset permissions: {}", e);
-            }
-        }
-    }
-}
-
 pub struct FileCompressor {
     bg_threads: BackgroundThreads,
 }
@@ -322,7 +268,7 @@ const fn round_to_block_size(size: u64, block_size: u64) -> u64 {
 mod tests {
     use super::*;
     use crate::progress::{Progress, Task};
-    use std::iter;
+    use std::{fs, iter};
     use tempfile::TempDir;
     use walkdir::WalkDir;
 

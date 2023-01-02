@@ -5,6 +5,7 @@ use std::fs::File;
 use std::os::unix::io::AsRawFd;
 use std::{io, ptr};
 
+#[allow(dead_code)]
 pub fn remove(file: &File, xattr_name: &CStr) -> io::Result<()> {
     // SAFETY: fd is valid, xattr_name is valid, and null terminated
     let rc = unsafe {

@@ -1,14 +1,15 @@
 use crate::decmpfs::CompressionType;
 use crate::threads::{BgWork, Context, WorkHandler};
-use crate::{
-    compressor, decmpfs, num_blocks, reset_times, seq_queue, set_flags, xattr, ForceWritableFile,
-};
+use crate::{compressor, decmpfs, num_blocks, reset_times, seq_queue, set_flags, xattr};
 use resource_fork::ResourceFork;
 use std::fs::{File, Metadata};
-use std::io;
 use std::io::{BufWriter, Seek, SeekFrom, Write};
+use std::os::fd::AsRawFd;
 use std::os::macos::fs::MetadataExt;
+use std::path::Path;
 use std::sync::Arc;
+use std::{io, ptr};
+use tempfile::NamedTempFile;
 
 pub(super) type Sender = crossbeam_channel::Sender<WorkItem>;
 
@@ -19,7 +20,7 @@ pub(super) struct Chunk {
 
 pub(super) struct WorkItem {
     pub context: Arc<Context>,
-    pub(crate) file: Arc<ForceWritableFile>,
+    pub file: Arc<File>,
     pub blocks: seq_queue::Receiver<io::Result<Chunk>>,
     pub metadata: Metadata,
 }
@@ -167,54 +168,97 @@ impl Handler {
         xattr::set(file, decmpfs::XATTR_NAME, &self.decomp_xattr_val_buf, 0)?;
         Ok(())
     }
-}
 
-impl WorkHandler<WorkItem> for Handler {
-    fn handle_item(&mut self, item: WorkItem) {
-        let _entered =
-            tracing::info_span!("writing file", path=%item.context.path.display()).entered();
+    fn write_file(&mut self, item: WorkItem) -> io::Result<()> {
         let file_size = item.metadata.len();
         let block_count: u32 = num_blocks(file_size).try_into().unwrap();
 
         self.block_sizes.clear();
         self.block_sizes.reserve(block_count.try_into().unwrap());
 
+        let tmp_file = tmp_file_for(&item.context.path)?;
+        copy_xattrs(&item.file, tmp_file.as_file())?;
+
         let mut resource_fork =
-            BufWriter::with_capacity(crate::BLOCK_SIZE, ResourceFork::new(&item.file));
-        resource_fork
-            .seek(SeekFrom::Start(
-                self.compressor_kind.blocks_start(block_count.into()),
-            ))
-            .unwrap();
+            BufWriter::with_capacity(crate::BLOCK_SIZE, ResourceFork::new(tmp_file.as_file()));
+        resource_fork.seek(SeekFrom::Start(
+            self.compressor_kind.blocks_start(block_count.into()),
+        ))?;
 
-        let res = self
-            .write_blocks(&item.context, &mut resource_fork, item.blocks)
-            .and_then(|write_dest| {
-                self.finish_xattrs(&item.file, file_size, write_dest, resource_fork)
-            })
-            .and_then(|()| {
-                let _entered = tracing::trace_span!("truncating file").entered();
-                // TODO: Decompress back into file on error
-                item.file.set_len(0)
-            })
-            .and_then(|()| set_flags(&item.file, item.metadata.st_flags() | libc::UF_COMPRESSED));
+        let write_dest = self.write_blocks(&item.context, &mut resource_fork, item.blocks)?;
+        self.finish_xattrs(tmp_file.as_file(), file_size, write_dest, resource_fork)?;
+        tmp_file.as_file().set_len(0)?;
 
-        if res.is_err() {
-            let _enter = tracing::error_span!("removing xattrs").entered();
-            if let Err(e) = xattr::remove(&item.file, decmpfs::XATTR_NAME) {
-                tracing::error!("error while removing decmpfs header: {}", e);
-            }
-            if let Err(e) = xattr::remove(&item.file, resource_fork::XATTR_NAME) {
-                tracing::error!("error while removing resource fork: {}", e);
-            }
+        copy_metadata(&item.file, tmp_file.as_file())?;
+        set_flags(
+            tmp_file.as_file(),
+            item.metadata.st_flags() | libc::UF_COMPRESSED,
+        )?;
+        let new_file = tmp_file.persist(&item.context.path)?;
+        if let Err(e) = reset_times(&new_file, &item.metadata) {
+            tracing::error!("Unable to reset times: {e}");
         }
+        Ok(())
+    }
+}
 
-        if let Err(e) = reset_times(&item.file, &item.metadata) {
-            tracing::error!("unable to reset file times: {}", e);
-        }
+impl WorkHandler<WorkItem> for Handler {
+    fn handle_item(&mut self, item: WorkItem) {
+        let context = Arc::clone(&item.context);
+        let _entered = tracing::info_span!("writing file", path=%context.path.display()).entered();
+
+        let res = self.write_file(item);
 
         if res.is_ok() {
-            tracing::info!("Successfully compressed {}", item.context.path.display());
+            tracing::info!("Successfully compressed {}", context.path.display());
         }
+    }
+}
+
+fn tmp_file_for(path: &Path) -> io::Result<NamedTempFile> {
+    let mut builder = tempfile::Builder::new();
+    if let Some(name) = path.file_name() {
+        builder.prefix(name);
+    }
+    builder.tempfile_in(path.parent().ok_or(io::ErrorKind::InvalidInput)?)
+}
+
+fn copy_xattrs(src: &File, dst: &File) -> io::Result<()> {
+    // SAFETY:
+    //   src and dst fds are valid
+    //   passing null state is allowed
+    //   flags are valid
+    let rc = unsafe {
+        libc::fcopyfile(
+            src.as_raw_fd(),
+            dst.as_raw_fd(),
+            ptr::null_mut(),
+            libc::COPYFILE_XATTR,
+        )
+    };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+fn copy_metadata(src: &File, dst: &File) -> io::Result<()> {
+    // SAFETY:
+    //   src and dst fds are valid
+    //   passing null state is allowed
+    //   flags are valid
+    let rc = unsafe {
+        libc::fcopyfile(
+            src.as_raw_fd(),
+            dst.as_raw_fd(),
+            ptr::null_mut(),
+            libc::COPYFILE_SECURITY,
+        )
+    };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
     }
 }
