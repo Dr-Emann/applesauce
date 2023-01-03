@@ -16,7 +16,6 @@ pub(super) struct WorkItem {
 
 pub(super) struct Work {
     pub compressor_kind: compressor::Kind,
-    pub compress: bool,
 }
 
 impl BgWork for Work {
@@ -27,7 +26,6 @@ impl BgWork for Work {
     fn make_handler(&self) -> Self::Handler {
         Handler {
             compressor: self.compressor_kind.compressor().unwrap(),
-            compress: self.compress,
             buf: vec![0; BLOCK_SIZE + 1024],
         }
     }
@@ -39,7 +37,6 @@ impl BgWork for Work {
 
 pub(super) struct Handler {
     compressor: Compressor,
-    compress: bool,
     buf: Vec<u8>,
 }
 
@@ -48,7 +45,7 @@ impl WorkHandler<WorkItem> for Handler {
         let _entered =
             tracing::debug_span!("compressing block", path=%item.context.path.display()).entered();
 
-        let f = if self.compress {
+        let f = if item.context.compress {
             Compressor::compress
         } else {
             Compressor::decompress

@@ -35,6 +35,7 @@ pub struct BackgroundThreads {
 
 pub struct Context {
     path: PathBuf,
+    compress: bool,
     orig_size: u64,
     progress: Box<dyn Task + Send + Sync>,
 }
@@ -45,13 +46,7 @@ impl BackgroundThreads {
             .map(NonZeroUsize::get)
             .unwrap_or(1);
 
-        let compressor = BgWorker::new(
-            compressor_threads,
-            &compressing::Work {
-                compressor_kind,
-                compress: true,
-            },
-        );
+        let compressor = BgWorker::new(compressor_threads, &compressing::Work { compressor_kind });
         let writer = BgWorker::new(4, &writer::Work { compressor_kind });
         let reader = BgWorker::new(
             2,
@@ -67,8 +62,12 @@ impl BackgroundThreads {
         }
     }
 
-    pub fn scan<'a, P>(&self, paths: impl IntoIterator<Item = &'a Path>, progress: &P)
-    where
+    pub fn scan<'a, P>(
+        &self,
+        compress: bool,
+        paths: impl IntoIterator<Item = &'a Path>,
+        progress: &P,
+    ) where
         P: Progress + Send + Sync,
         P::Task: Send + Sync + 'static,
     {
@@ -78,6 +77,7 @@ impl BackgroundThreads {
             chan.send(reader::WorkItem {
                 context: Arc::new(Context {
                     path,
+                    compress,
                     progress,
                     orig_size: metadata.len(),
                 }),

@@ -169,7 +169,7 @@ impl Handler {
         Ok(())
     }
 
-    fn write_file(&mut self, item: WorkItem) -> io::Result<()> {
+    fn write_compressed_file(&mut self, item: WorkItem) -> io::Result<()> {
         let file_size = item.metadata.len();
         let block_count: u32 = num_blocks(file_size).try_into().unwrap();
 
@@ -202,6 +202,29 @@ impl Handler {
         }
         Ok(())
     }
+
+    fn write_uncompressed_file(&mut self, item: WorkItem) -> io::Result<()> {
+        let mut tmp_file = tmp_file_for(&item.context.path)?;
+        copy_xattrs(&item.file, tmp_file.as_file())?;
+
+        for chunk in item.blocks {
+            let chunk = chunk?;
+            tmp_file.write_all(&chunk.block)?;
+        }
+
+        copy_metadata(&item.file, tmp_file.as_file())?;
+        set_flags(
+            tmp_file.as_file(),
+            item.metadata.st_flags() & !libc::UF_COMPRESSED,
+        )?;
+        tmp_file.as_file().sync_all()?;
+
+        let new_file = tmp_file.persist(&item.context.path)?;
+        if let Err(e) = reset_times(&new_file, &item.metadata) {
+            tracing::error!("Unable to reset times: {e}");
+        }
+        Ok(())
+    }
 }
 
 impl WorkHandler<WorkItem> for Handler {
@@ -209,7 +232,11 @@ impl WorkHandler<WorkItem> for Handler {
         let context = Arc::clone(&item.context);
         let _entered = tracing::info_span!("writing file", path=%context.path.display()).entered();
 
-        let res = self.write_file(item);
+        let res = if item.context.compress {
+            self.write_compressed_file(item)
+        } else {
+            self.write_uncompressed_file(item)
+        };
 
         if res.is_ok() {
             tracing::info!("Successfully compressed {}", context.path.display());

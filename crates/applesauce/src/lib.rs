@@ -223,7 +223,7 @@ impl FileCompressor {
         P: Progress + Send + Sync,
         P::Task: Send + Sync + 'static,
     {
-        self.bg_threads.scan(paths, progress);
+        self.bg_threads.scan(true, paths, progress);
     }
 }
 
