@@ -194,6 +194,8 @@ impl Handler {
             tmp_file.as_file(),
             item.metadata.st_flags() | libc::UF_COMPRESSED,
         )?;
+        tmp_file.as_file().sync_all()?;
+
         let new_file = tmp_file.persist(&item.context.path)?;
         if let Err(e) = reset_times(&new_file, &item.metadata) {
             tracing::error!("Unable to reset times: {e}");
