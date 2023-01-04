@@ -170,3 +170,61 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::BLOCK_SIZE;
+    use std::io::{Cursor, Write};
+
+    struct FakeLzImpl;
+
+    impl Impl for FakeLzImpl {
+        fn scratch_size() -> usize {
+            unimplemented!()
+        }
+
+        unsafe fn encode(_: &mut [u8], _: &[u8], _: &mut [u8]) -> usize {
+            unimplemented!()
+        }
+
+        unsafe fn decode(_: &mut [u8], _: &[u8], _: &mut [u8]) -> usize {
+            unimplemented!()
+        }
+    }
+
+    #[test]
+    fn finish() {
+        let mut cursor = Cursor::new(Vec::<u8>::new());
+        let block_sizes = &[10, 20, 30, 40, 10];
+        let blocks_start = Lz::<FakeLzImpl>::blocks_start(block_sizes.len() as u64);
+        let data_end = 110 + blocks_start as u32;
+        cursor.set_position(data_end.into());
+        // Ensure file is extended to size
+        let _ = cursor.write(&[]).unwrap();
+
+        Lz::<FakeLzImpl>::finish(&mut cursor, block_sizes).unwrap();
+        let len = cursor.get_ref().len() as u64;
+        assert_eq!(
+            len,
+            110 + Lz::<FakeLzImpl>::extra_size(block_sizes.len() as u64)
+        );
+
+        cursor.set_position(0);
+        let block_info =
+            Lz::<FakeLzImpl>::read_block_info(&mut cursor, (block_sizes.len() * BLOCK_SIZE) as u64)
+                .unwrap();
+        let expected_block_info: Vec<BlockInfo> = block_sizes
+            .iter()
+            .scan(blocks_start as u32, |acc, &size| {
+                let offset = *acc;
+                *acc += size;
+                Some(BlockInfo {
+                    offset,
+                    compressed_size: size,
+                })
+            })
+            .collect();
+        assert_eq!(block_info, expected_block_info);
+    }
+}

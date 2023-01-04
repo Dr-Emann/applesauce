@@ -106,7 +106,8 @@ impl super::CompressorImpl for Zlib {
         let mut buf = [0; BlockInfo::SIZE];
         for _ in 0..block_count {
             reader.read_exact(&mut buf)?;
-            let block_info = BlockInfo::from_bytes(buf);
+            let mut block_info = BlockInfo::from_bytes(buf);
+            block_info.offset += ZLIB_BLOCK_TABLE_START as u32;
             result.push(block_info);
         }
 
@@ -184,6 +185,7 @@ mod tests {
     use super::*;
     use crate::compressor::tests::compressor_round_trip;
     use crate::compressor::CompressorImpl;
+    use crate::BLOCK_SIZE;
     use std::io::Cursor;
 
     #[test]
@@ -200,20 +202,40 @@ mod tests {
     #[test]
     fn finish() {
         let mut cursor = Cursor::new(Vec::<u8>::new());
-        cursor.set_position(0x200);
         let block_sizes = &[10, 20, 30, 40, 10];
+        let blocks_start = Zlib::blocks_start(block_sizes.len() as u64);
+        let data_end = 110 + blocks_start as u32;
+        cursor.set_position(data_end.into());
+        // Ensure file is extended to size
+        let _ = cursor.write(&[]).unwrap();
 
         Zlib::finish(&mut cursor, block_sizes).unwrap();
-        let result = cursor.into_inner();
-        assert_eq!(
-            result[..16],
-            [0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0x32]
-        );
+        let len = cursor.get_ref().len() as u64;
+        assert_eq!(len, 110 + Zlib::extra_size(block_sizes.len() as u64));
+
+        let result = cursor.get_ref();
+        assert_eq!(result[..16], header(data_end));
         assert!(result[16..0x100].iter().all(|&b| b == 0));
-        assert_eq!(result[0x100..0x104], u32::to_be_bytes(0x200 - 0x104));
+        assert_eq!(result[0x100..0x104], u32::to_be_bytes(data_end - 0x104));
         assert_eq!(
             result[0x104..0x108],
             u32::to_le_bytes(block_sizes.len() as _)
         );
+
+        cursor.set_position(0);
+        let block_info =
+            Zlib::read_block_info(&mut cursor, (block_sizes.len() * BLOCK_SIZE) as u64).unwrap();
+        let expected_block_info: Vec<BlockInfo> = block_sizes
+            .iter()
+            .scan(blocks_start as u32, |acc, &size| {
+                let offset = *acc;
+                *acc += size;
+                Some(BlockInfo {
+                    offset,
+                    compressed_size: size,
+                })
+            })
+            .collect();
+        assert_eq!(block_info, expected_block_info);
     }
 }

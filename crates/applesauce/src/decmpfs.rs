@@ -176,7 +176,7 @@ pub const ZLIB_TRAILER: [u8; 50] = [
     0x00, 0x00, 0x00, 0x00,
 ];
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct BlockInfo {
     pub offset: u32,
     pub compressed_size: u32,
