@@ -156,7 +156,8 @@ impl Handler {
         self.decomp_xattr_val_buf.clear();
         self.decomp_xattr_val_buf
             .reserve(decmpfs::DiskHeader::SIZE + extra_data.len());
-        header.write_into(&mut self.decomp_xattr_val_buf)?;
+        self.decomp_xattr_val_buf
+            .extend_from_slice(&header.to_bytes());
 
         if storage == decmpfs::Storage::ResourceFork {
             self.compressor_kind

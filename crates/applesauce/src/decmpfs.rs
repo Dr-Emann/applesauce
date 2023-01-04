@@ -1,6 +1,7 @@
 use crate::compressor;
 use std::ffi::CStr;
-use std::{fmt, io, mem};
+use std::fmt;
+use std::io::Write;
 
 pub const MAX_XATTR_SIZE: usize = 3802;
 pub const MAX_XATTR_DATA_SIZE: usize = MAX_XATTR_SIZE - DiskHeader::SIZE;
@@ -27,6 +28,7 @@ impl fmt::Display for Storage {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct CompressionType(u32);
 
 impl fmt::Display for CompressionType {
@@ -87,11 +89,21 @@ pub struct DiskHeader {
 impl DiskHeader {
     pub const SIZE: usize = 16;
 
-    pub fn write_into<W: io::Write>(&self, mut w: W) -> io::Result<()> {
-        w.write_all(&MAGIC)?;
-        w.write_all(&self.compression_type.to_le_bytes())?;
-        w.write_all(&self.uncompressed_size.to_le_bytes())?;
-        Ok(())
+    pub fn to_bytes(self) -> [u8; Self::SIZE] {
+        let mut result = [0; Self::SIZE];
+
+        let Self {
+            compression_type,
+            uncompressed_size,
+        } = self;
+
+        let mut writer = &mut result[..];
+        writer.write_all(&MAGIC).unwrap();
+        writer.write_all(&compression_type.to_le_bytes()).unwrap();
+        writer.write_all(&uncompressed_size.to_le_bytes()).unwrap();
+        assert!(writer.is_empty());
+
+        result
     }
 }
 
@@ -119,11 +131,21 @@ pub struct ZlibBlockInfo {
 }
 
 impl ZlibBlockInfo {
-    pub const SIZE: u64 = mem::size_of::<u32>() as u64 * 2;
+    pub const SIZE: usize = 8;
 
-    pub fn write_into<W: io::Write>(self, mut w: W) -> io::Result<()> {
-        w.write_all(&u32::to_le_bytes(self.offset))?;
-        w.write_all(&u32::to_le_bytes(self.compressed_size))?;
-        Ok(())
+    pub fn to_bytes(self) -> [u8; Self::SIZE] {
+        let mut result = [0; Self::SIZE];
+
+        let Self {
+            offset,
+            compressed_size,
+        } = self;
+
+        let mut writer = &mut result[..];
+        writer.write_all(&offset.to_le_bytes()).unwrap();
+        writer.write_all(&compressed_size.to_le_bytes()).unwrap();
+        assert!(writer.is_empty());
+
+        result
     }
 }

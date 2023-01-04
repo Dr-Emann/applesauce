@@ -9,7 +9,9 @@ pub struct Zlib;
 
 impl super::CompressorImpl for Zlib {
     fn blocks_start(block_count: u64) -> u64 {
-        ZLIB_BLOCK_TABLE_START + mem::size_of::<u32>() as u64 + block_count * ZlibBlockInfo::SIZE
+        ZLIB_BLOCK_TABLE_START
+            + mem::size_of::<u32>() as u64
+            + block_count * ZlibBlockInfo::SIZE as u64
     }
 
     fn compress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
@@ -72,7 +74,7 @@ impl super::CompressorImpl for Zlib {
                 offset: current_offset,
                 compressed_size: size,
             };
-            block_info.write_into(&mut writer)?;
+            writer.write_all(&block_info.to_bytes())?;
 
             current_offset = current_offset.checked_add(size).ok_or_else(|| {
                 io::Error::new(io::ErrorKind::Other, "offset too large for 32 bytes")
