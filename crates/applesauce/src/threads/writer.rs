@@ -149,7 +149,7 @@ impl Handler {
 
         let compression_type = CompressionType::new(self.compressor_kind, storage);
         let header = decmpfs::DiskHeader {
-            compression_type: compression_type.raw_type(),
+            compression_type,
             uncompressed_size: file_size,
         };
 

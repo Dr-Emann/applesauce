@@ -82,7 +82,7 @@ impl CompressionType {
 
 #[derive(Debug, Copy, Clone)]
 pub struct DiskHeader {
-    pub compression_type: u32,
+    pub compression_type: CompressionType,
     pub uncompressed_size: u64,
 }
 
@@ -99,7 +99,9 @@ impl DiskHeader {
 
         let mut writer = &mut result[..];
         writer.write_all(&MAGIC).unwrap();
-        writer.write_all(&compression_type.to_le_bytes()).unwrap();
+        writer
+            .write_all(&compression_type.raw_type().to_le_bytes())
+            .unwrap();
         writer.write_all(&uncompressed_size.to_le_bytes()).unwrap();
         assert!(writer.is_empty());
 
