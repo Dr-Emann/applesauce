@@ -4,6 +4,7 @@ use crate::compressor::lzfse::Lzfse;
 use crate::compressor::lzvn::Lzvn;
 #[cfg(feature = "zlib")]
 use crate::compressor::zlib::Zlib;
+use crate::decmpfs;
 use std::{fmt, io};
 
 #[cfg(any(feature = "lzfse", feature = "lzvn"))]
@@ -24,6 +25,11 @@ pub(crate) trait CompressorImpl {
 
     fn compress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize>;
     fn decompress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize>;
+
+    fn read_block_info<R: io::Read + io::Seek>(
+        reader: R,
+        orig_file_size: u64,
+    ) -> io::Result<Vec<decmpfs::BlockInfo>>;
 
     fn finish<W: io::Write + io::Seek>(writer: W, block_sizes: &[u32]) -> io::Result<()>;
 }

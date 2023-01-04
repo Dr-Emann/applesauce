@@ -1,4 +1,7 @@
 use crate::compressor::CompressorImpl;
+use crate::decmpfs;
+use crate::decmpfs::BlockInfo;
+use std::io::SeekFrom;
 use std::marker::PhantomData;
 use std::{io, mem};
 
@@ -83,6 +86,58 @@ impl<I: Impl> CompressorImpl for Lz<I> {
             return Err(io::ErrorKind::WriteZero.into());
         }
         Ok(len)
+    }
+
+    fn read_block_info<R: io::Read + io::Seek>(
+        mut reader: R,
+        orig_file_size: u64,
+    ) -> io::Result<Vec<decmpfs::BlockInfo>> {
+        reader.rewind()?;
+        let block_count = crate::num_blocks(orig_file_size);
+
+        let blocks_start = u32::try_from(Self::blocks_start(block_count)).unwrap();
+        let mut result = Vec::with_capacity(
+            block_count
+                .try_into()
+                .map_err(|_| io::ErrorKind::InvalidInput)?,
+        );
+
+        let mut buf = [0; mem::size_of::<u32>()];
+
+        reader.read_exact(&mut buf)?;
+        let mut last_offset = u32::from_le_bytes(buf);
+        if last_offset != blocks_start {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "unexpected first block offset",
+            ));
+        }
+
+        // LZ stores an offset before every block, and an extra for the end, we've
+        //  read one offset, so we can read block_count more
+        for _ in 0..block_count {
+            reader.read_exact(&mut buf)?;
+            let next_offset = u32::from_le_bytes(buf);
+            let compressed_size = next_offset
+                .checked_sub(last_offset)
+                .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "compressed block overlap"))?;
+            result.push(BlockInfo {
+                offset: last_offset,
+                compressed_size,
+            });
+            last_offset = next_offset;
+        }
+
+        // Check that the last offset is the end of the file
+        let end_pos = reader.seek(SeekFrom::End(0))?;
+        if end_pos != u64::from(last_offset) {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "last block does not end resource fork",
+            ));
+        }
+
+        Ok(result)
     }
 
     fn finish<W: io::Write + io::Seek>(mut writer: W, block_sizes: &[u32]) -> io::Result<()> {

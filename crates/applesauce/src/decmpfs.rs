@@ -177,13 +177,22 @@ pub const ZLIB_TRAILER: [u8; 50] = [
 ];
 
 #[derive(Debug, Copy, Clone)]
-pub struct ZlibBlockInfo {
+pub struct BlockInfo {
     pub offset: u32,
     pub compressed_size: u32,
 }
 
-impl ZlibBlockInfo {
+impl BlockInfo {
     pub const SIZE: usize = 8;
+
+    pub fn from_bytes(data: [u8; Self::SIZE]) -> Self {
+        let offset = u32::from_le_bytes(data[..4].try_into().unwrap());
+        let compressed_size = u32::from_le_bytes(data[4..].try_into().unwrap());
+        Self {
+            offset,
+            compressed_size,
+        }
+    }
 
     pub fn to_bytes(self) -> [u8; Self::SIZE] {
         let mut result = [0; Self::SIZE];

@@ -1,17 +1,15 @@
-use crate::decmpfs::{ZlibBlockInfo, ZLIB_BLOCK_TABLE_START, ZLIB_TRAILER};
+use crate::decmpfs::{BlockInfo, ZLIB_BLOCK_TABLE_START, ZLIB_TRAILER};
 use crate::try_read_all;
 use flate2::bufread::{ZlibDecoder, ZlibEncoder};
 use flate2::Compression;
-use std::io::SeekFrom;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::{io, mem};
 
 pub struct Zlib;
 
 impl super::CompressorImpl for Zlib {
     fn blocks_start(block_count: u64) -> u64 {
-        ZLIB_BLOCK_TABLE_START
-            + mem::size_of::<u32>() as u64
-            + block_count * ZlibBlockInfo::SIZE as u64
+        ZLIB_BLOCK_TABLE_START + mem::size_of::<u32>() as u64 + block_count * BlockInfo::SIZE as u64
     }
 
     fn extra_size(block_count: u64) -> u64 {
@@ -54,6 +52,77 @@ impl super::CompressorImpl for Zlib {
         Ok(bytes_read)
     }
 
+    fn read_block_info<R: Read + Seek>(
+        mut reader: R,
+        orig_file_size: u64,
+    ) -> io::Result<Vec<BlockInfo>> {
+        let block_count = u32::try_from(crate::num_blocks(orig_file_size)).unwrap();
+
+        let total_size = u32::try_from(reader.seek(SeekFrom::End(0))?).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "resource fork exceeds u32 range",
+            )
+        })?;
+        let data_end = total_size - u32::try_from(ZLIB_TRAILER.len()).unwrap();
+
+        reader.rewind()?;
+        let mut header_buf = [0; HEADER_LEN];
+        reader.read_exact(&mut header_buf)?;
+        if header_buf != header(data_end) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "zlib header does not match expectation",
+            ));
+        }
+
+        let mut buf = [0; 0x100 - HEADER_LEN];
+        reader.read_exact(&mut buf)?;
+        if buf.iter().any(|&b| b != 0) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "expected zeros between header and 0x100",
+            ));
+        }
+
+        let mut buf = [0; mem::size_of::<u32>()];
+        reader.read_exact(&mut buf)?;
+        if buf != u32::to_be_bytes(data_end - 0x104) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "unexpected data at 0x100",
+            ));
+        }
+
+        reader.read_exact(&mut buf)?;
+        if buf != block_count.to_le_bytes() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "block count does not match computed value",
+            ));
+        }
+
+        let mut result = Vec::with_capacity(block_count.try_into().unwrap());
+        let mut buf = [0; BlockInfo::SIZE];
+        for _ in 0..block_count {
+            reader.read_exact(&mut buf)?;
+            let block_info = BlockInfo::from_bytes(buf);
+            result.push(block_info);
+        }
+
+        reader.seek(SeekFrom::Start(data_end.into()))?;
+        let mut trailer_buf = [0; ZLIB_TRAILER.len()];
+        reader.read_exact(&mut trailer_buf)?;
+        if trailer_buf != ZLIB_TRAILER {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "trailer does not match",
+            ));
+        }
+
+        Ok(result)
+    }
+
     fn finish<W: io::Write + io::Seek>(mut writer: W, block_sizes: &[u32]) -> io::Result<()> {
         let block_count =
             u32::try_from(block_sizes.len()).map_err(|_| io::ErrorKind::InvalidInput)?;
@@ -62,10 +131,7 @@ impl super::CompressorImpl for Zlib {
         writer.write_all(&ZLIB_TRAILER)?;
 
         writer.rewind()?;
-        writer.write_all(&u32::to_be_bytes(0x100))?;
-        writer.write_all(&u32::to_be_bytes(data_end))?;
-        writer.write_all(&u32::to_be_bytes(data_end - 0x100))?;
-        writer.write_all(&u32::to_be_bytes(0x32))?;
+        writer.write_all(&header(data_end))?;
 
         writer.seek(SeekFrom::Start(0x100))?;
         writer.write_all(&u32::to_be_bytes(data_end - 0x104))?;
@@ -74,7 +140,7 @@ impl super::CompressorImpl for Zlib {
         let mut current_offset =
             u32::try_from(Self::blocks_start(block_count.into()) - ZLIB_BLOCK_TABLE_START).unwrap();
         for &size in block_sizes {
-            let block_info = ZlibBlockInfo {
+            let block_info = BlockInfo {
                 offset: current_offset,
                 compressed_size: size,
             };
@@ -95,6 +161,22 @@ impl super::CompressorImpl for Zlib {
         }
         Ok(())
     }
+}
+
+const HEADER_LEN: usize = 4 * mem::size_of::<u32>();
+fn header(data_end: u32) -> [u8; HEADER_LEN] {
+    let mut result = [0; HEADER_LEN];
+
+    let mut writer = &mut result[..];
+    writer.write_all(&u32::to_be_bytes(0x100)).unwrap();
+    writer.write_all(&u32::to_be_bytes(data_end)).unwrap();
+    writer
+        .write_all(&u32::to_be_bytes(data_end - 0x100))
+        .unwrap();
+    writer.write_all(&u32::to_be_bytes(0x32)).unwrap();
+    assert!(writer.is_empty());
+
+    result
 }
 
 #[cfg(test)]
