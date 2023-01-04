@@ -1,10 +1,10 @@
 use crate::compressor;
 use std::ffi::CStr;
-use std::fmt;
 use std::io::Write;
+use std::{fmt, io};
 
 pub const MAX_XATTR_SIZE: usize = 3802;
-pub const MAX_XATTR_DATA_SIZE: usize = MAX_XATTR_SIZE - DiskHeader::SIZE;
+pub const MAX_XATTR_DATA_SIZE: usize = MAX_XATTR_SIZE - HEADER_LEN;
 pub const MAGIC: [u8; 4] = *b"fpmc";
 
 pub const ZLIB_BLOCK_TABLE_START: u64 = 0x104;
@@ -80,32 +80,82 @@ impl CompressionType {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct DiskHeader {
-    pub compression_type: CompressionType,
-    pub uncompressed_size: u64,
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum DecodeError {
+    TooSmall,
+    BadMagic,
 }
 
-impl DiskHeader {
-    pub const SIZE: usize = 16;
+impl fmt::Display for DecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = match *self {
+            DecodeError::TooSmall => "decmpfs xattr too small to hold compression header",
+            DecodeError::BadMagic => "decmpfs xattr magic field has incorrect value",
+        };
+        f.write_str(s)
+    }
+}
 
-    pub fn to_bytes(self) -> [u8; Self::SIZE] {
-        let mut result = [0; Self::SIZE];
+impl std::error::Error for DecodeError {}
 
-        let Self {
+#[derive(Debug, Copy, Clone)]
+pub struct Value<'a> {
+    pub compression_type: CompressionType,
+    pub uncompressed_size: u64,
+    pub extra_data: &'a [u8],
+}
+
+const HEADER_LEN: usize = 16;
+
+impl<'a> Value<'a> {
+    pub fn from_data(data: &'a [u8]) -> Result<Self, DecodeError> {
+        if data.len() < HEADER_LEN {
+            return Err(DecodeError::TooSmall);
+        }
+        let (header, extra_data) = data.split_at(HEADER_LEN);
+        let magic = &header[0..4];
+        let compression_type = &header[4..8];
+        let uncompressed_size = &header[8..16];
+        if magic != MAGIC {
+            return Err(DecodeError::BadMagic);
+        }
+        let compression_type = CompressionType::from_raw_type(u32::from_le_bytes(
+            compression_type.try_into().unwrap(),
+        ));
+        let uncompressed_size = u64::from_le_bytes(uncompressed_size.try_into().unwrap());
+
+        Ok(Self {
             compression_type,
             uncompressed_size,
-        } = self;
+            extra_data,
+        })
+    }
+
+    pub fn write_to<W: Write>(self, mut writer: W) -> io::Result<()> {
+        writer.write_all(&self.header_bytes())?;
+        writer.write_all(self.extra_data)?;
+
+        Ok(())
+    }
+
+    fn header_bytes(self) -> [u8; HEADER_LEN] {
+        let mut result = [0; HEADER_LEN];
 
         let mut writer = &mut result[..];
         writer.write_all(&MAGIC).unwrap();
         writer
-            .write_all(&compression_type.raw_type().to_le_bytes())
+            .write_all(&self.compression_type.0.to_le_bytes())
             .unwrap();
-        writer.write_all(&uncompressed_size.to_le_bytes()).unwrap();
+        writer
+            .write_all(&self.uncompressed_size.to_le_bytes())
+            .unwrap();
         assert!(writer.is_empty());
 
         result
+    }
+
+    pub fn len(self) -> usize {
+        HEADER_LEN + self.extra_data.len()
     }
 }
 

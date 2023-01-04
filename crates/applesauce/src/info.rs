@@ -1,11 +1,10 @@
 use crate::{decmpfs, round_to_block_size, xattr};
-use std::error::Error;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
+use std::io;
 use std::os::macos::fs::MetadataExt as _;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt as _;
 use std::path::Path;
-use std::{fmt, io};
 use walkdir::WalkDir;
 
 pub use decmpfs::CompressionType;
@@ -15,24 +14,6 @@ pub struct DecmpfsInfo {
     pub attribute_size: u64,
     pub orig_file_size: u64,
 }
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum DecmpfsError {
-    TooSmall,
-    BadMagic,
-}
-
-impl fmt::Display for DecmpfsError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let s = match *self {
-            DecmpfsError::TooSmall => "decmpfs xattr too small to hold compression header",
-            DecmpfsError::BadMagic => "decmpfs xattr magic field has incorrect value",
-        };
-        f.write_str(s)
-    }
-}
-
-impl Error for DecmpfsError {}
 
 #[non_exhaustive]
 pub struct AfscFileInfo {
@@ -45,7 +26,7 @@ pub struct AfscFileInfo {
 
     pub resource_fork_size: Option<u64>,
 
-    pub decmpfs_info: Option<Result<DecmpfsInfo, DecmpfsError>>,
+    pub decmpfs_info: Option<Result<DecmpfsInfo, decmpfs::DecodeError>>,
 }
 
 impl AfscFileInfo {
@@ -117,7 +98,7 @@ pub fn get(path: &Path) -> io::Result<AfscFileInfo> {
     xattr::with_names(&path, |xattr_name| {
         if xattr_name == decmpfs::XATTR_NAME {
             debug_assert!(decmpfs_info.is_none());
-            let info = get_decmpfs_info(&path, xattr_name)?;
+            let info = get_decmpfs_info(&path)?;
             decmpfs_info = Some(info);
         } else {
             let maybe_len = xattr::len(&path, xattr_name)?;
@@ -155,26 +136,19 @@ pub fn get(path: &Path) -> io::Result<AfscFileInfo> {
     })
 }
 
-fn get_decmpfs_info(
-    path: &CString,
-    xattr_name: &CStr,
-) -> io::Result<Result<DecmpfsInfo, DecmpfsError>> {
-    let maybe_contents = xattr::read(path, xattr_name)?;
-    let contents = maybe_contents
+fn get_decmpfs_info(path: &CString) -> io::Result<Result<DecmpfsInfo, decmpfs::DecodeError>> {
+    let maybe_data = xattr::read(path, decmpfs::XATTR_NAME)?;
+    let data = maybe_data
         .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "cannot get decmpfs xattr"))?;
-    if contents.len() < decmpfs::DiskHeader::SIZE {
-        return Ok(Err(DecmpfsError::TooSmall));
-    }
-    let magic = &contents[..4];
-    if magic != decmpfs::MAGIC {
-        return Ok(Err(DecmpfsError::BadMagic));
-    }
-    let compression_type =
-        CompressionType::from_raw_type(u32::from_le_bytes(contents[4..8].try_into().unwrap()));
-    let uncompressed_size = u64::from_le_bytes(contents[8..16].try_into().unwrap());
-    Ok(Ok(DecmpfsInfo {
-        compression_type,
-        attribute_size: contents.len().try_into().unwrap(),
-        orig_file_size: uncompressed_size,
-    }))
+
+    Ok(decmpfs_info_from_bytes(&data))
+}
+
+fn decmpfs_info_from_bytes(data: &[u8]) -> Result<DecmpfsInfo, decmpfs::DecodeError> {
+    let value = decmpfs::Value::from_data(data)?;
+    Ok(DecmpfsInfo {
+        compression_type: value.compression_type,
+        attribute_size: data.len().try_into().unwrap(),
+        orig_file_size: value.uncompressed_size,
+    })
 }

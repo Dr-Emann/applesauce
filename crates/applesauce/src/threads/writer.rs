@@ -148,25 +148,25 @@ impl Handler {
         };
 
         let compression_type = CompressionType::new(self.compressor_kind, storage);
-        let header = decmpfs::DiskHeader {
+        let decmpfs_value = decmpfs::Value {
             compression_type,
             uncompressed_size: file_size,
+            extra_data: &extra_data,
         };
 
         self.decomp_xattr_val_buf.clear();
-        self.decomp_xattr_val_buf
-            .reserve(decmpfs::DiskHeader::SIZE + extra_data.len());
-        self.decomp_xattr_val_buf
-            .extend_from_slice(&header.to_bytes());
+        self.decomp_xattr_val_buf.reserve(decmpfs_value.len());
+        // Writing to a Vec never fails
+        decmpfs_value
+            .write_to(&mut self.decomp_xattr_val_buf)
+            .unwrap();
+        xattr::set(file, decmpfs::XATTR_NAME, &self.decomp_xattr_val_buf, 0)?;
 
         if storage == decmpfs::Storage::ResourceFork {
             self.compressor_kind
                 .finish(&mut resource_fork, &self.block_sizes)?;
             resource_fork.flush()?;
-        } else {
-            self.decomp_xattr_val_buf.extend_from_slice(&extra_data);
         }
-        xattr::set(file, decmpfs::XATTR_NAME, &self.decomp_xattr_val_buf, 0)?;
         Ok(())
     }
 
