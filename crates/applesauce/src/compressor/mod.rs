@@ -130,7 +130,8 @@ impl Kind {
 
     #[must_use]
     pub const fn supported(self) -> bool {
-        // Clippy falsely sees these arms as identical
+        // Clippy falsely sees these arms as identical:
+        //   https://github.com/rust-lang/rust-clippy/issues/9775
         #[allow(clippy::match_same_arms)]
         match self {
             Kind::Zlib => cfg!(feature = "zlib"),
