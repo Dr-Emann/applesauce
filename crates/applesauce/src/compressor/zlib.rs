@@ -14,6 +14,10 @@ impl super::CompressorImpl for Zlib {
             + block_count * ZlibBlockInfo::SIZE as u64
     }
 
+    fn extra_size(block_count: u64) -> u64 {
+        Self::blocks_start(block_count) + u64::try_from(ZLIB_TRAILER.len()).unwrap()
+    }
+
     fn compress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
         assert!(dst.len() > src.len());
 
@@ -53,18 +57,18 @@ impl super::CompressorImpl for Zlib {
     fn finish<W: io::Write + io::Seek>(mut writer: W, block_sizes: &[u32]) -> io::Result<()> {
         let block_count =
             u32::try_from(block_sizes.len()).map_err(|_| io::ErrorKind::InvalidInput)?;
-        let compressed_data_size =
+        let data_end =
             u32::try_from(writer.stream_position()?).map_err(|_| io::ErrorKind::InvalidInput)?;
         writer.write_all(&ZLIB_TRAILER)?;
 
         writer.rewind()?;
         writer.write_all(&u32::to_be_bytes(0x100))?;
-        writer.write_all(&u32::to_be_bytes(compressed_data_size))?;
-        writer.write_all(&u32::to_be_bytes(compressed_data_size - 0x100))?;
+        writer.write_all(&u32::to_be_bytes(data_end))?;
+        writer.write_all(&u32::to_be_bytes(data_end - 0x100))?;
         writer.write_all(&u32::to_be_bytes(0x32))?;
 
         writer.seek(SeekFrom::Start(0x100))?;
-        writer.write_all(&u32::to_be_bytes(compressed_data_size - 0x104))?;
+        writer.write_all(&u32::to_be_bytes(data_end - 0x104))?;
 
         writer.write_all(&u32::to_le_bytes(block_count))?;
         let mut current_offset =
@@ -104,6 +108,11 @@ mod tests {
     fn round_trip() {
         let mut compressor = Zlib;
         compressor_round_trip(&mut compressor);
+    }
+
+    #[test]
+    fn extra_size() {
+        assert_eq!(Zlib::extra_size(0), 0x13A);
     }
 
     #[test]

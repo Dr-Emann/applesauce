@@ -16,6 +16,7 @@ pub mod info;
 pub mod progress;
 
 mod decmpfs;
+mod rfork_storage;
 mod scan;
 mod seq_queue;
 mod threads;

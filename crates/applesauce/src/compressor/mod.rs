@@ -18,6 +18,9 @@ mod zlib;
 pub(crate) trait CompressorImpl {
     /// The offset to start data at, for the specified number of blocks
     fn blocks_start(block_count: u64) -> u64;
+    fn extra_size(block_count: u64) -> u64 {
+        Self::blocks_start(block_count)
+    }
 
     fn compress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize>;
     fn decompress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize>;

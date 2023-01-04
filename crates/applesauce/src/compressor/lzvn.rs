@@ -54,6 +54,8 @@ impl lz::Impl for Impl {
         unsafe {
             lzvn_decode(&mut state);
         }
+
+        assert!(dst_range.contains(&state.dst));
         // SAFETY: lvzn_decode will have updated the dst ptr on state,
         //         but kept within range dst..dst_end
         unsafe { state.dst.offset_from(dst.as_mut_ptr()) }
