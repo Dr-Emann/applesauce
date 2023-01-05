@@ -48,6 +48,7 @@ impl Handler {
 
     fn try_handle(&mut self, item: WorkItem) -> io::Result<()> {
         let WorkItem { context, metadata } = item;
+        let _guard = tracing::info_span!("reading file", path=%context.path.display()).entered();
         let file = Arc::new(File::open(&context.path)?);
 
         let file_size = metadata.len();
