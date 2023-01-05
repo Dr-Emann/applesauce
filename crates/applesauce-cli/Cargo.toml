@@ -11,7 +11,7 @@ path = "src/main.rs"
 [features]
 default = ["zlib", "lzfse", "lzvn"]
 
-zlib = ["applesauce/zlib"]
+zlib = ["applesauce/zlib", "dep:flate2"]
 lzfse = ["applesauce/lzfse"]
 lzvn = ["applesauce/lzvn"]
 

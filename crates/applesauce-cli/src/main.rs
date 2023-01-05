@@ -115,7 +115,7 @@ fn main() {
                 };
                 let writer = {
                     cfg_if! {
-                        if #[cfg(feature = "flate2")] {
+                        if #[cfg(feature = "zlib")] {
                             flate2::write::GzEncoder::new(file, flate2::Compression::default())
                         } else {
                             file
