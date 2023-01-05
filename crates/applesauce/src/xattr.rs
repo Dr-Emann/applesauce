@@ -1,22 +1,166 @@
+use libc::ssize_t;
 use memchr::memchr;
 use std::cmp::Ordering;
-use std::ffi::CStr;
+use std::ffi::{c_int, CStr, CString};
 use std::fs::File;
 use std::os::unix::io::AsRawFd;
 use std::{io, ptr};
 
+const FLAGS: c_int = libc::XATTR_SHOWCOMPRESSION;
+
+pub trait XattrSource {
+    unsafe fn get_xattr(&self, xattr_name: &CStr, value: *mut u8, size: usize) -> ssize_t;
+    unsafe fn set_xattr(
+        &self,
+        xattr_name: &CStr,
+        value: *const u8,
+        size: usize,
+        offset: u32,
+    ) -> c_int;
+    unsafe fn remove_xattr(&self, xattr_name: &CStr) -> c_int;
+    unsafe fn list_xattr(&self, name_buf: *mut u8, size: usize) -> ssize_t;
+}
+
+impl XattrSource for CStr {
+    unsafe fn get_xattr(&self, xattr_name: &CStr, value: *mut u8, size: usize) -> ssize_t {
+        // SAFETY: self and xattr_name are valid, null terminated strings.
+        //         caller must ensure value/size safety
+        unsafe {
+            libc::getxattr(
+                self.as_ptr(),
+                xattr_name.as_ptr(),
+                value.cast(),
+                size,
+                0,
+                FLAGS,
+            )
+        }
+    }
+
+    unsafe fn set_xattr(
+        &self,
+        xattr_name: &CStr,
+        value: *const u8,
+        size: usize,
+        offset: u32,
+    ) -> c_int {
+        // SAFETY: self and xattr_name are valid, null terminated strings.
+        //         caller must ensure value/size safety
+        unsafe {
+            libc::setxattr(
+                self.as_ptr(),
+                xattr_name.as_ptr(),
+                value.cast(),
+                size,
+                offset,
+                FLAGS,
+            )
+        }
+    }
+
+    unsafe fn remove_xattr(&self, xattr_name: &CStr) -> c_int {
+        // SAFETY: self and xattr_name are valid, null terminated strings
+        unsafe { libc::removexattr(self.as_ptr(), xattr_name.as_ptr(), FLAGS) }
+    }
+
+    unsafe fn list_xattr(&self, name_buf: *mut u8, size: usize) -> ssize_t {
+        // SAFETY: self and xattr_name are valid, null terminated strings
+        //         caller must ensure buf/size safety
+        unsafe { libc::listxattr(self.as_ptr(), name_buf.cast(), size, FLAGS) }
+    }
+}
+
+impl XattrSource for CString {
+    unsafe fn get_xattr(&self, xattr_name: &CStr, value: *mut u8, size: usize) -> ssize_t {
+        // SAFETY: Defer to cstr impl
+        unsafe { self.as_c_str().get_xattr(xattr_name, value, size) }
+    }
+
+    unsafe fn set_xattr(
+        &self,
+        xattr_name: &CStr,
+        value: *const u8,
+        size: usize,
+        offset: u32,
+    ) -> c_int {
+        // SAFETY: Defer to cstr impl
+        unsafe { self.as_c_str().set_xattr(xattr_name, value, size, offset) }
+    }
+
+    unsafe fn remove_xattr(&self, xattr_name: &CStr) -> c_int {
+        // SAFETY: Defer to cstr impl
+        unsafe { self.as_c_str().remove_xattr(xattr_name) }
+    }
+
+    unsafe fn list_xattr(&self, name_buf: *mut u8, size: usize) -> ssize_t {
+        // SAFETY: Defer to cstr impl
+        unsafe { self.as_c_str().list_xattr(name_buf, size) }
+    }
+}
+
+impl XattrSource for File {
+    unsafe fn get_xattr(&self, xattr_name: &CStr, value: *mut u8, size: usize) -> ssize_t {
+        // SAFETY:
+        //   self.as_raw_fd is a valid fd
+        //   xattr_name is valid, null terminated string
+        //   caller must ensure value/size safety
+        unsafe {
+            libc::fgetxattr(
+                self.as_raw_fd(),
+                xattr_name.as_ptr(),
+                value.cast(),
+                size,
+                0,
+                FLAGS,
+            )
+        }
+    }
+
+    unsafe fn set_xattr(
+        &self,
+        xattr_name: &CStr,
+        value: *const u8,
+        size: usize,
+        offset: u32,
+    ) -> c_int {
+        // SAFETY:
+        //   self.as_raw_fd is a valid fd
+        //   xattr_name is valid, null terminated string
+        //   caller must ensure value/size safety
+        unsafe {
+            libc::fsetxattr(
+                self.as_raw_fd(),
+                xattr_name.as_ptr(),
+                value.cast(),
+                size,
+                offset,
+                FLAGS,
+            )
+        }
+    }
+
+    unsafe fn remove_xattr(&self, xattr_name: &CStr) -> c_int {
+        // SAFETY:
+        //   self.as_raw_fd is a valid fd
+        //   xattr_name is valid, null terminated string
+        unsafe { libc::fremovexattr(self.as_raw_fd(), xattr_name.as_ptr(), FLAGS) }
+    }
+
+    unsafe fn list_xattr(&self, name_buf: *mut u8, size: usize) -> ssize_t {
+        // SAFETY:
+        //   self.as_raw_fd is a valid fd
+        //   xattr_name is valid, null terminated string
+        //   caller must ensure buf/size safety
+        unsafe { libc::flistxattr(self.as_raw_fd(), name_buf.cast(), size, FLAGS) }
+    }
+}
+
 #[allow(dead_code)]
 // TODO: Remove if needed, but we'll probably need this for
 //       uncompress
-pub fn remove(file: &File, xattr_name: &CStr) -> io::Result<()> {
+pub fn remove<F: XattrSource + ?Sized>(f: &F, xattr_name: &CStr) -> io::Result<()> {
     // SAFETY: fd is valid, xattr_name is valid, and null terminated
-    let rc = unsafe {
-        libc::fremovexattr(
-            file.as_raw_fd(),
-            xattr_name.as_ptr(),
-            libc::XATTR_SHOWCOMPRESSION,
-        )
-    };
+    let rc = unsafe { f.remove_xattr(xattr_name) };
     if rc == -1 {
         let last_error = io::Error::last_os_error();
         if last_error.raw_os_error() != Some(libc::ENOATTR) {
@@ -26,20 +170,11 @@ pub fn remove(file: &File, xattr_name: &CStr) -> io::Result<()> {
     Ok(())
 }
 
-pub fn len(path: &CStr, xattr_name: &CStr) -> io::Result<Option<usize>> {
+pub fn len<F: XattrSource + ?Sized>(f: &F, xattr_name: &CStr) -> io::Result<Option<usize>> {
     // SAFETY:
-    // path/xattr_name are valid pointers and are null terminated
+    // f is valid, xattr_name is a valid pointer and is null terminated
     // value == NULL, size == 0 is allowed to just return the size
-    let rc = unsafe {
-        libc::getxattr(
-            path.as_ptr(),
-            xattr_name.as_ptr(),
-            ptr::null_mut(),
-            0,
-            0,
-            libc::XATTR_SHOWCOMPRESSION,
-        )
-    };
+    let rc = unsafe { f.get_xattr(xattr_name, ptr::null_mut(), 0) };
     if rc == -1 {
         let last_error = io::Error::last_os_error();
         return if last_error.raw_os_error() == Some(libc::ENOATTR) {
@@ -51,25 +186,21 @@ pub fn len(path: &CStr, xattr_name: &CStr) -> io::Result<Option<usize>> {
     Ok(Some(rc as usize))
 }
 
-pub fn is_present(path: &CStr, xattr_name: &CStr) -> io::Result<bool> {
-    len(path, xattr_name).map(|len| len.is_some())
+pub fn is_present<F: XattrSource + ?Sized>(f: &F, xattr_name: &CStr) -> io::Result<bool> {
+    len(f, xattr_name).map(|len| len.is_some())
 }
 
-pub fn set(file: &File, xattr_name: &CStr, data: &[u8], offset: u32) -> io::Result<()> {
+pub fn set<F: XattrSource + ?Sized>(
+    f: &F,
+    xattr_name: &CStr,
+    data: &[u8],
+    offset: u32,
+) -> io::Result<()> {
     // SAFETY:
-    // fd is valid
+    // f is valid
     // xattr name is valid and null terminated
     // value is valid, writable, and initialized up to `.len()` bytes
-    let rc = unsafe {
-        libc::fsetxattr(
-            file.as_raw_fd(),
-            xattr_name.as_ptr(),
-            data.as_ptr().cast(),
-            data.len(),
-            offset,
-            libc::XATTR_SHOWCOMPRESSION,
-        )
-    };
+    let rc = unsafe { f.set_xattr(xattr_name, data.as_ptr(), data.len(), offset) };
     if rc == 0 {
         Ok(())
     } else {
@@ -77,34 +208,28 @@ pub fn set(file: &File, xattr_name: &CStr, data: &[u8], offset: u32) -> io::Resu
     }
 }
 
-pub fn read(path: &CStr, xattr_name: &CStr) -> io::Result<Option<Vec<u8>>> {
-    let len = match len(path, xattr_name)? {
-        Some(len) => len,
-        None => return Ok(None),
-    };
-
-    let mut buf = vec![0; len];
+pub fn read<F: XattrSource + ?Sized>(f: &F, xattr_name: &CStr) -> io::Result<Option<Vec<u8>>> {
+    let mut buf = Vec::new();
 
     loop {
+        let len = match len(f, xattr_name)? {
+            Some(len) => len,
+            None => return Ok(None),
+        };
+        if len > buf.len() {
+            buf.resize(len, 0);
+        }
+
         // SAFETY:
         // path/xattr_name are valid pointers and are null terminated
         // value == NULL, size == 0 is allowed to just return the size
-        let rc = unsafe {
-            libc::getxattr(
-                path.as_ptr(),
-                xattr_name.as_ptr(),
-                buf.as_mut_ptr().cast(),
-                buf.len(),
-                0,
-                libc::XATTR_SHOWCOMPRESSION,
-            )
-        };
+        let rc = unsafe { f.get_xattr(xattr_name, buf.as_mut_ptr(), buf.len()) };
         if rc < 0 {
             let last_error = io::Error::last_os_error();
-            return if last_error.raw_os_error() == Some(libc::ENOATTR) {
-                Ok(None)
-            } else {
-                Err(last_error)
+            return match last_error.raw_os_error() {
+                Some(libc::ERANGE) => continue,
+                Some(libc::ENOATTR) => Ok(None),
+                _ => Err(last_error),
             };
         }
         let new_len = rc as usize;
@@ -122,20 +247,12 @@ pub fn read(path: &CStr, xattr_name: &CStr) -> io::Result<Option<Vec<u8>>> {
     Ok(Some(buf))
 }
 
-fn raw_names(path: &CStr) -> io::Result<Vec<u8>> {
+fn raw_names<F: XattrSource + ?Sized>(f: &F) -> io::Result<Vec<u8>> {
     let mut buf: Vec<u8> = Vec::new();
     loop {
         // Safety:
-        // path is valid, and null terminated
         // it is safe to pass list=null,size=0
-        let rc = unsafe {
-            libc::listxattr(
-                path.as_ptr(),
-                ptr::null_mut(),
-                0,
-                libc::XATTR_SHOWCOMPRESSION,
-            )
-        };
+        let rc = unsafe { f.list_xattr(ptr::null_mut(), 0) };
         if rc < 0 {
             let e = io::Error::last_os_error();
             return match e.raw_os_error() {
@@ -144,19 +261,13 @@ fn raw_names(path: &CStr) -> io::Result<Vec<u8>> {
             };
         }
         let size = rc as usize;
-        buf.resize(size, 0);
+        if size > buf.len() {
+            buf.resize(size, 0);
+        }
 
         // Safety:
-        // path is valid, and null terminated
         // buf is valid, and writable for len bytes
-        let rc = unsafe {
-            libc::listxattr(
-                path.as_ptr(),
-                buf.as_mut_ptr().cast(),
-                buf.len(),
-                libc::XATTR_SHOWCOMPRESSION,
-            )
-        };
+        let rc = unsafe { f.list_xattr(buf.as_mut_ptr(), buf.len()) };
         if rc < 0 {
             let e = io::Error::last_os_error();
             return match e.raw_os_error() {
@@ -171,8 +282,11 @@ fn raw_names(path: &CStr) -> io::Result<Vec<u8>> {
     Ok(buf)
 }
 
-pub fn with_names<F: FnMut(&CStr) -> io::Result<()>>(path: &CStr, mut f: F) -> io::Result<()> {
-    let raw_buf = raw_names(path)?;
+pub fn with_names<T: XattrSource + ?Sized, F: FnMut(&CStr) -> io::Result<()>>(
+    file: &T,
+    mut f: F,
+) -> io::Result<()> {
+    let raw_buf = raw_names(file)?;
     let mut raw_buf = &raw_buf[..];
 
     while !raw_buf.is_empty() {
