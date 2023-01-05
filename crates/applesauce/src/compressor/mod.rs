@@ -1,10 +1,11 @@
 #[cfg(feature = "lzfse")]
-use crate::compressor::lzfse::Lzfse;
+use self::lzfse::Lzfse;
 #[cfg(feature = "lzvn")]
-use crate::compressor::lzvn::Lzvn;
+use self::lzvn::Lzvn;
 #[cfg(feature = "zlib")]
-use crate::compressor::zlib::Zlib;
+use self::zlib::Zlib;
 use crate::decmpfs;
+use crate::decmpfs::BlockInfo;
 use std::{fmt, io};
 
 #[cfg(any(feature = "lzfse", feature = "lzvn"))]
@@ -173,6 +174,25 @@ impl Kind {
             Kind::Lzvn => Lzvn::blocks_start(block_count),
             #[cfg(feature = "lzfse")]
             Kind::Lzfse => Lzfse::blocks_start(block_count),
+            #[allow(unreachable_patterns)]
+            _ => panic!("Unsupported compression kind {self}"),
+        }
+    }
+
+    pub fn read_block_info<R: io::Read + io::Seek>(
+        self,
+        reader: R,
+        orig_file_size: u64,
+    ) -> io::Result<Vec<BlockInfo>> {
+        match self {
+            #[cfg(feature = "zlib")]
+            Kind::Zlib => Zlib::read_block_info(reader, orig_file_size),
+            #[cfg(feature = "lzvn")]
+            Kind::Lzvn => Lzvn::read_block_info(reader, orig_file_size),
+            #[cfg(feature = "lzfse")]
+            Kind::Lzfse => Lzfse::read_block_info(reader, orig_file_size),
+            #[allow(unreachable_patterns)]
+            _ => panic!("Unsupported compression kind {self}"),
         }
     }
 
@@ -184,6 +204,8 @@ impl Kind {
             Kind::Lzvn => Lzvn::finish(writer, block_sizes),
             #[cfg(feature = "lzfse")]
             Kind::Lzfse => Lzfse::finish(writer, block_sizes),
+            #[allow(unreachable_patterns)]
+            _ => panic!("Unsupported compression kind {self}"),
         }
     }
 }
