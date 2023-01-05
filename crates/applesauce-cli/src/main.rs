@@ -3,11 +3,11 @@ use applesauce::{compressor, info};
 use cfg_if::cfg_if;
 use clap::Parser;
 use std::ffi::OsStr;
-use std::fmt;
 use std::fs::File;
 use std::io::{BufWriter, LineWriter};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
+use std::{fmt, io};
 use tracing::metadata::LevelFilter;
 use tracing::Level;
 use tracing_chrome::ChromeLayerBuilder;
@@ -99,39 +99,42 @@ impl Default for Compression {
     }
 }
 
+fn chrome_tracing_file(path: Option<&Path>) -> Option<impl io::Write> {
+    let path = path?;
+
+    let file = match File::create(path) {
+        Ok(file) => file,
+        Err(e) => {
+            tracing::error!("Unable to open chrome layer: {e}");
+            return None;
+        }
+    };
+
+    let writer = {
+        cfg_if! {
+            if #[cfg(feature = "zlib")] {
+                flate2::write::GzEncoder::new(file, flate2::Compression::default())
+            } else {
+                file
+            }
+        }
+    };
+    Some(BufWriter::new(writer))
+}
+
 fn main() {
     let cli = Cli::parse();
 
-    let _chrome_guard;
-    let chrome_layer = 'layer: {
-        match cli.chrome_tracing {
-            Some(path) => {
-                let file = match File::create(path) {
-                    Ok(file) => file,
-                    Err(e) => {
-                        tracing::error!("Unable to open chrome layer: {e}");
-                        break 'layer None;
-                    }
-                };
-                let writer = {
-                    cfg_if! {
-                        if #[cfg(feature = "zlib")] {
-                            flate2::write::GzEncoder::new(file, flate2::Compression::default())
-                        } else {
-                            file
-                        }
-                    }
-                };
-                let (layer, guard) = ChromeLayerBuilder::new()
-                    .writer(BufWriter::new(writer))
-                    .include_args(true)
-                    .build();
-                _chrome_guard = guard;
-                Some(layer)
-            }
-            None => None,
-        }
-    };
+    let mut _chrome_guard = None;
+    let chrome_file = chrome_tracing_file(cli.chrome_tracing.as_deref());
+    let chrome_layer = chrome_file.map(|f| {
+        let (layer, guard) = ChromeLayerBuilder::new()
+            .writer(f)
+            .include_args(true)
+            .build();
+        _chrome_guard = Some(guard);
+        layer
+    });
 
     let progress_bars = ProgressBars::new();
     let fmt_writer = Mutex::new(LineWriter::new(ProgressBarWriter::new(
