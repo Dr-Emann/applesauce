@@ -116,8 +116,9 @@ impl Compressor {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Kind {
-    Zlib,
+    Zlib = 0,
     Lzvn,
     Lzfse,
 }

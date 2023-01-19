@@ -23,6 +23,7 @@ pub(super) struct WorkItem {
     pub file: Arc<File>,
     pub blocks: seq_queue::Receiver<io::Result<Chunk>>,
     pub metadata: Metadata,
+    pub compressed: bool,
 }
 
 pub(super) struct Work {
@@ -233,7 +234,7 @@ impl WorkHandler<WorkItem> for Handler {
         let context = Arc::clone(&item.context);
         let _entered = tracing::info_span!("writing file", path=%context.path.display()).entered();
 
-        let res = if item.context.compress {
+        let res = if item.compressed {
             self.write_compressed_file(item)
         } else {
             self.write_uncompressed_file(item)

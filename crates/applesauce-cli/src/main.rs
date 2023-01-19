@@ -155,7 +155,11 @@ fn main() {
         Commands::Compress(Compress { paths, compression }) => {
             {
                 let mut compressor = applesauce::FileCompressor::new(compression.into());
-                compressor.recursive_compress(paths.iter().map(Path::new), &progress_bars);
+                compressor.recursive_compress(
+                    paths.iter().map(Path::new),
+                    compression.into(),
+                    &progress_bars,
+                );
             }
             progress_bars.finish();
             tracing::info!("Finished compressing");

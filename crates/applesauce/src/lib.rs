@@ -42,7 +42,9 @@ macro_rules! cstr {
     }};
 }
 
+use crate::compressor::Kind;
 use crate::progress::Progress;
+use crate::threads::reader::Mode;
 use crate::threads::BackgroundThreads;
 pub(crate) use cstr;
 
@@ -219,12 +221,13 @@ impl FileCompressor {
     pub fn recursive_compress<'a, P>(
         &mut self,
         paths: impl IntoIterator<Item = &'a Path>,
+        kind: Kind,
         progress: &P,
     ) where
         P: Progress + Send + Sync,
         P::Task: Send + Sync + 'static,
     {
-        self.bg_threads.scan(true, paths, progress);
+        self.bg_threads.scan(Mode::Compress(kind), paths, progress);
     }
 }
 

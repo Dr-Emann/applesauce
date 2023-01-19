@@ -11,12 +11,12 @@ pub(super) type Sender = crossbeam_channel::Sender<WorkItem>;
 pub(super) struct WorkItem {
     pub context: Arc<Context>,
     pub data: Vec<u8>,
+    pub kind: compressor::Kind,
+    pub compress: bool,
     pub slot: seq_queue::Slot<io::Result<writer::Chunk>>,
 }
 
-pub(super) struct Work {
-    pub compressor_kind: compressor::Kind,
-}
+pub(super) struct Work;
 
 impl BgWork for Work {
     type Item = WorkItem;
@@ -25,7 +25,7 @@ impl BgWork for Work {
 
     fn make_handler(&self) -> Self::Handler {
         Handler {
-            compressor: self.compressor_kind.compressor().unwrap(),
+            compressors: (0..3).map(|_| None).collect(),
             buf: vec![0; BLOCK_SIZE + 1024],
         }
     }
@@ -36,7 +36,7 @@ impl BgWork for Work {
 }
 
 pub(super) struct Handler {
-    compressor: Compressor,
+    compressors: Vec<Option<Compressor>>,
     buf: Vec<u8>,
 }
 
@@ -45,12 +45,16 @@ impl WorkHandler<WorkItem> for Handler {
         let _entered =
             tracing::debug_span!("compressing block", path=%item.context.path.display()).entered();
 
-        let f = if item.context.compress {
+        let f = if item.compress {
             Compressor::compress
         } else {
             Compressor::decompress
         };
-        let size = match f(&mut self.compressor, &mut self.buf, &item.data) {
+
+        // TODO: Unwrap?
+        let compressor = self.compressors[item.kind as usize]
+            .get_or_insert_with(|| item.kind.compressor().unwrap());
+        let size = match f(compressor, &mut self.buf, &item.data) {
             Ok(size) => size,
             Err(e) => {
                 if item.slot.finish(Err(e)).is_err() {
