@@ -44,8 +44,7 @@ macro_rules! cstr {
 
 use crate::compressor::Kind;
 use crate::progress::Progress;
-use crate::threads::reader::Mode;
-use crate::threads::BackgroundThreads;
+use crate::threads::{BackgroundThreads, Mode};
 pub(crate) use cstr;
 
 const BLOCK_SIZE: usize = 0x10000;
@@ -211,9 +210,9 @@ pub struct FileCompressor {
 
 impl FileCompressor {
     #[must_use]
-    pub fn new(compressor_kind: compressor::Kind) -> Self {
+    pub fn new() -> Self {
         Self {
-            bg_threads: BackgroundThreads::new(compressor_kind),
+            bg_threads: BackgroundThreads::new(),
         }
     }
 
@@ -333,8 +332,8 @@ mod tests {
         populate_dir(dir);
         let old_hash = recursive_hash(dir);
 
-        let mut fc = FileCompressor::new(compressor_kind);
-        fc.recursive_compress(iter::once(dir), &NoProgress);
+        let mut fc = FileCompressor::new();
+        fc.recursive_compress(iter::once(dir), compressor_kind, &NoProgress);
         drop(fc);
 
         let new_hash = recursive_hash(dir);

@@ -154,7 +154,7 @@ fn main() {
     match cli.command {
         Commands::Compress(Compress { paths, compression }) => {
             {
-                let mut compressor = applesauce::FileCompressor::new(compression.into());
+                let mut compressor = applesauce::FileCompressor::new();
                 compressor.recursive_compress(
                     paths.iter().map(Path::new),
                     compression.into(),

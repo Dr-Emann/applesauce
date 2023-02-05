@@ -1,4 +1,4 @@
-use crate::progress::{Progress, Task};
+use crate::progress::{self, Progress};
 use crate::{compressor, scan};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
@@ -36,17 +36,25 @@ pub struct BackgroundThreads {
 pub struct Context {
     path: PathBuf,
     orig_size: u64,
-    progress: Box<dyn Task + Send + Sync>,
+    progress: Box<dyn progress::Task + Send + Sync>,
+    mode: Mode,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum Mode {
+    Compress(compressor::Kind),
+    DecompressManually,
+    DecompressByReading,
 }
 
 impl BackgroundThreads {
-    pub fn new(compressor_kind: compressor::Kind) -> Self {
+    pub fn new() -> Self {
         let compressor_threads = thread::available_parallelism()
             .map(NonZeroUsize::get)
             .unwrap_or(1);
 
         let compressor = BgWorker::new(compressor_threads, &compressing::Work);
-        let writer = BgWorker::new(4, &writer::Work { compressor_kind });
+        let writer = BgWorker::new(4, &writer::Work);
         let reader = BgWorker::new(
             2,
             &reader::Work {
@@ -61,12 +69,8 @@ impl BackgroundThreads {
         }
     }
 
-    pub fn scan<'a, P>(
-        &self,
-        mode: reader::Mode,
-        paths: impl IntoIterator<Item = &'a Path>,
-        progress: &P,
-    ) where
+    pub fn scan<'a, P>(&self, mode: Mode, paths: impl IntoIterator<Item = &'a Path>, progress: &P)
+    where
         P: Progress + Send + Sync,
         P::Task: Send + Sync + 'static,
     {
@@ -77,9 +81,9 @@ impl BackgroundThreads {
                 context: Arc::new(Context {
                     path,
                     progress,
+                    mode,
                     orig_size: metadata.len(),
                 }),
-                mode,
                 metadata,
             })
             .unwrap();

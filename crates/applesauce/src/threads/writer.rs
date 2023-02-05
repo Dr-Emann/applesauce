@@ -1,5 +1,6 @@
+use crate::compressor::Kind;
 use crate::decmpfs::CompressionType;
-use crate::threads::{BgWork, Context, WorkHandler};
+use crate::threads::{BgWork, Context, Mode, WorkHandler};
 use crate::{compressor, decmpfs, num_blocks, reset_times, seq_queue, set_flags, xattr};
 use resource_fork::ResourceFork;
 use std::fs::{File, Metadata};
@@ -23,12 +24,9 @@ pub(super) struct WorkItem {
     pub file: Arc<File>,
     pub blocks: seq_queue::Receiver<io::Result<Chunk>>,
     pub metadata: Metadata,
-    pub compressed: bool,
 }
 
-pub(super) struct Work {
-    pub compressor_kind: compressor::Kind,
-}
+pub(super) struct Work;
 
 impl BgWork for Work {
     type Item = WorkItem;
@@ -36,7 +34,7 @@ impl BgWork for Work {
     const NAME: &'static str = "writer";
 
     fn make_handler(&self) -> Handler {
-        Handler::new(self.compressor_kind)
+        Handler::new()
     }
 }
 
@@ -46,15 +44,13 @@ enum WriteDest {
 }
 
 pub(super) struct Handler {
-    compressor_kind: compressor::Kind,
     decomp_xattr_val_buf: Vec<u8>,
     block_sizes: Vec<u32>,
 }
 
 impl Handler {
-    fn new(compressor_kind: compressor::Kind) -> Self {
+    fn new() -> Self {
         Self {
-            compressor_kind,
             decomp_xattr_val_buf: Vec::with_capacity(decmpfs::MAX_XATTR_SIZE),
             block_sizes: Vec::new(),
         }
@@ -140,6 +136,7 @@ impl Handler {
         &mut self,
         file: &File,
         file_size: u64,
+        compressor_kind: compressor::Kind,
         write_dest: WriteDest,
         mut resource_fork: W,
     ) -> io::Result<()> {
@@ -148,7 +145,7 @@ impl Handler {
             WriteDest::BlocksWritten => (decmpfs::Storage::ResourceFork, Vec::new()),
         };
 
-        let compression_type = CompressionType::new(self.compressor_kind, storage);
+        let compression_type = CompressionType::new(compressor_kind, storage);
         let decmpfs_value = decmpfs::Value {
             compression_type,
             uncompressed_size: file_size,
@@ -164,14 +161,13 @@ impl Handler {
         xattr::set(file, decmpfs::XATTR_NAME, &self.decomp_xattr_val_buf, 0)?;
 
         if storage == decmpfs::Storage::ResourceFork {
-            self.compressor_kind
-                .finish(&mut resource_fork, &self.block_sizes)?;
+            compressor_kind.finish(&mut resource_fork, &self.block_sizes)?;
             resource_fork.flush()?;
         }
         Ok(())
     }
 
-    fn write_compressed_file(&mut self, item: WorkItem) -> io::Result<()> {
+    fn write_compressed_file(&mut self, item: WorkItem, compressor_kind: Kind) -> io::Result<()> {
         let file_size = item.metadata.len();
         let block_count: u32 = num_blocks(file_size).try_into().unwrap();
 
@@ -184,11 +180,17 @@ impl Handler {
         let mut resource_fork =
             BufWriter::with_capacity(crate::BLOCK_SIZE, ResourceFork::new(tmp_file.as_file()));
         resource_fork.seek(SeekFrom::Start(
-            self.compressor_kind.blocks_start(block_count.into()),
+            compressor_kind.blocks_start(block_count.into()),
         ))?;
 
         let write_dest = self.write_blocks(&item.context, &mut resource_fork, item.blocks)?;
-        self.finish_xattrs(tmp_file.as_file(), file_size, write_dest, resource_fork)?;
+        self.finish_xattrs(
+            tmp_file.as_file(),
+            file_size,
+            compressor_kind,
+            write_dest,
+            resource_fork,
+        )?;
         tmp_file.as_file().set_len(0)?;
 
         copy_metadata(&item.file, tmp_file.as_file())?;
@@ -234,10 +236,11 @@ impl WorkHandler<WorkItem> for Handler {
         let context = Arc::clone(&item.context);
         let _entered = tracing::info_span!("writing file", path=%context.path.display()).entered();
 
-        let res = if item.compressed {
-            self.write_compressed_file(item)
-        } else {
-            self.write_uncompressed_file(item)
+        let res = match context.mode {
+            Mode::Compress(kind) => self.write_compressed_file(item, kind),
+            Mode::DecompressManually | Mode::DecompressByReading => {
+                self.write_uncompressed_file(item)
+            }
         };
 
         if res.is_ok() {

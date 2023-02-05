@@ -1,6 +1,6 @@
 use crate::threads::writer::Chunk;
-use crate::threads::{compressing, writer, BgWork, Context, WorkHandler};
-use crate::{compressor, seq_queue, try_read_all, BLOCK_SIZE};
+use crate::threads::{compressing, writer, BgWork, Context, Mode, WorkHandler};
+use crate::{seq_queue, try_read_all, BLOCK_SIZE};
 use std::fs::{File, Metadata};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -9,14 +9,6 @@ use std::{io, mem, thread};
 pub(super) struct WorkItem {
     pub context: Arc<Context>,
     pub metadata: Metadata,
-    pub mode: Mode,
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum Mode {
-    Compress(compressor::Kind),
-    DecompressManually,
-    DecompressByReading,
 }
 
 pub(super) struct Work {
@@ -56,11 +48,7 @@ impl Handler {
     }
 
     fn try_handle(&mut self, item: WorkItem) -> io::Result<()> {
-        let WorkItem {
-            context,
-            metadata,
-            mode,
-        } = item;
+        let WorkItem { context, metadata } = item;
         let _guard = tracing::info_span!("reading file", path=%context.path.display()).entered();
         let file = Arc::new(File::open(&context.path)?);
 
@@ -77,11 +65,10 @@ impl Handler {
                 file: Arc::clone(&file),
                 blocks: rx,
                 metadata,
-                compressed: matches!(mode, Mode::Compress(_)),
             })
             .unwrap();
 
-        if let Err(mut e) = self.read_file_into(&context, &file, file_size, &tx, mode) {
+        if let Err(mut e) = self.read_file_into(&context, &file, file_size, &tx) {
             if let Some(slot) = tx.prepare_send() {
                 let orig_e = mem::replace(&mut e, io::ErrorKind::Other.into());
                 let _ = slot.finish(Err(orig_e));
@@ -98,7 +85,6 @@ impl Handler {
         file: &File,
         expected_len: u64,
         tx: &seq_queue::Sender<io::Result<writer::Chunk>>,
-        mode: Mode,
     ) -> io::Result<()> {
         let mut total_read = 0;
         let block_span = tracing::debug_span!("reading blocks");
@@ -123,7 +109,7 @@ impl Handler {
                 ));
             }
 
-            match mode {
+            match context.mode {
                 Mode::Compress(kind) => {
                     let _enter = tracing::debug_span!("waiting to send to compressor").entered();
                     self.compressor
