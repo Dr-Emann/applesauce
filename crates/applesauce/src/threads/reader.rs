@@ -1,3 +1,4 @@
+use crate::seq_queue::Slot;
 use crate::threads::writer::Chunk;
 use crate::threads::{compressing, writer, BgWork, Context, Mode, WorkHandler};
 use crate::{seq_queue, try_read_all, BLOCK_SIZE};
@@ -86,6 +87,51 @@ impl Handler {
         expected_len: u64,
         tx: &seq_queue::Sender<io::Result<writer::Chunk>>,
     ) -> io::Result<()> {
+        match context.mode {
+            Mode::Compress(kind) => {
+                let compressor = self.compressor.clone();
+                self.with_file_chunks(file, expected_len, tx, |slot, data| {
+                    let _enter = tracing::debug_span!("waiting to send to compressor").entered();
+                    compressor
+                        .send(compressing::WorkItem {
+                            context: Arc::clone(context),
+                            data: data.to_vec(),
+                            slot,
+                            kind,
+                            compress: true,
+                        })
+                        .unwrap();
+                    Ok(())
+                })?;
+            }
+            Mode::DecompressManually => {
+                todo!()
+            }
+            Mode::DecompressByReading => {
+                self.with_file_chunks(file, expected_len, tx, |slot, data| {
+                    let res = slot.finish(Ok(Chunk {
+                        block: data.to_vec(),
+                        orig_size: data.len() as u64,
+                    }));
+                    if let Err(e) = res {
+                        // This should only happen if the writer had an error
+                        tracing::debug!("error finishing chunk: {e}");
+                    }
+                    Ok(())
+                })?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn with_file_chunks(
+        &mut self,
+        file: &File,
+        expected_len: u64,
+        tx: &seq_queue::Sender<io::Result<writer::Chunk>>,
+        mut f: impl FnMut(Slot<io::Result<writer::Chunk>>, &[u8]) -> io::Result<()>,
+    ) -> io::Result<()> {
         let mut total_read = 0;
         let block_span = tracing::debug_span!("reading blocks");
         loop {
@@ -109,34 +155,7 @@ impl Handler {
                 ));
             }
 
-            match context.mode {
-                Mode::Compress(kind) => {
-                    let _enter = tracing::debug_span!("waiting to send to compressor").entered();
-                    self.compressor
-                        .send(compressing::WorkItem {
-                            context: Arc::clone(context),
-                            data: self.buf[..n].to_vec(),
-                            slot,
-                            kind,
-                            compress: true,
-                        })
-                        .unwrap();
-                }
-                Mode::DecompressManually => {
-                    unimplemented!()
-                }
-                Mode::DecompressByReading => {
-                    let res = slot.finish(Ok(Chunk {
-                        block: self.buf[..n].to_vec(),
-                        orig_size: n as u64,
-                    }));
-                    if let Err(e) = res {
-                        // This should only happen if the writer had an error
-                        tracing::debug!("error finishing chunk: {e}");
-                    }
-                }
-            }
-            {}
+            f(slot, &self.buf[..n])?;
         }
         if total_read != expected_len {
             // TODO: The writer doesn't know!
