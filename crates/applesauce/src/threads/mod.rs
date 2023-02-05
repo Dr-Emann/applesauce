@@ -48,6 +48,7 @@ pub enum Mode {
 }
 
 impl BackgroundThreads {
+    #[must_use]
     pub fn new() -> Self {
         let compressor_threads = thread::available_parallelism()
             .map(NonZeroUsize::get)
@@ -88,6 +89,12 @@ impl BackgroundThreads {
             })
             .unwrap();
         })
+    }
+}
+
+impl Default for BackgroundThreads {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

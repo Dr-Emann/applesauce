@@ -205,6 +205,7 @@ fn set_flags(file: &File, flags: libc::c_uint) -> io::Result<()> {
     }
 }
 
+#[derive(Default)]
 pub struct FileCompressor {
     bg_threads: BackgroundThreads,
 }
@@ -212,9 +213,7 @@ pub struct FileCompressor {
 impl FileCompressor {
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            bg_threads: BackgroundThreads::new(),
-        }
+        Self::default()
     }
 
     #[tracing::instrument(skip_all)]
