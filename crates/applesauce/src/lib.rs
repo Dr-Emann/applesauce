@@ -33,6 +33,7 @@ use std::os::unix::fs::MetadataExt as _;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::{io, mem, ptr};
+use tracing::warn;
 
 macro_rules! cstr {
     ($s:literal) => {{
@@ -228,6 +229,24 @@ impl FileCompressor {
     {
         self.bg_threads.scan(Mode::Compress(kind), paths, progress);
     }
+
+    #[tracing::instrument(skip_all)]
+    pub fn recursive_decompress<'a, P>(
+        &mut self,
+        paths: impl IntoIterator<Item = &'a Path>,
+        manual: bool,
+        progress: &P,
+    ) where
+        P: Progress + Send + Sync,
+        P::Task: Send + Sync + 'static,
+    {
+        let mode = if manual {
+            Mode::DecompressManually
+        } else {
+            Mode::DecompressByReading
+        };
+        self.bg_threads.scan(mode, paths, progress);
+    }
 }
 
 fn try_read_all<R: Read>(mut r: R, buf: &mut [u8]) -> io::Result<usize> {
@@ -342,6 +361,14 @@ mod tests {
         let info = info::get_recursive(dir).unwrap();
         // These are very compressible files
         assert!(info.compression_savings_fraction() > 0.5);
+
+        // Now Decompress
+        let mut fc = FileCompressor::new();
+        fc.recursive_decompress(iter::once(dir), true, &NoProgress);
+        drop(fc);
+
+        let new_hash = recursive_hash(dir);
+        assert_eq!(old_hash, new_hash);
     }
 
     #[cfg(feature = "zlib")]

@@ -36,8 +36,26 @@ struct Cli {
 enum Commands {
     /// Compress files
     Compress(Compress),
+
+    /// Decompress files
+    Decompress(Decompress),
+
     /// Get info about compression for file(s)
     Info(Info),
+}
+
+#[derive(Debug, clap::Args)]
+struct Decompress {
+    /// Paths to recursively decompress
+    #[arg(required = true)]
+    paths: Vec<PathBuf>,
+
+    /// Decompress manually, rather than allowing the OS to do decompression
+    ///
+    /// This may be useful to do decompression from an older OS version which can't
+    /// natively read the compressed file
+    #[arg(long)]
+    manual: bool,
 }
 
 #[derive(Debug, clap::Args)]
@@ -158,6 +176,18 @@ fn main() {
                 compressor.recursive_compress(
                     paths.iter().map(Path::new),
                     compression.into(),
+                    &progress_bars,
+                );
+            }
+            progress_bars.finish();
+            tracing::info!("Finished compressing");
+        }
+        Commands::Decompress(Decompress { paths, manual }) => {
+            {
+                let mut compressor = applesauce::FileCompressor::new();
+                compressor.recursive_decompress(
+                    paths.iter().map(Path::new),
+                    manual,
                     &progress_bars,
                 );
             }

@@ -1,7 +1,7 @@
 use crate::seq_queue::Slot;
 use crate::threads::writer::Chunk;
 use crate::threads::{compressing, writer, BgWork, Context, Mode, WorkHandler};
-use crate::{seq_queue, try_read_all, BLOCK_SIZE};
+use crate::{rfork_storage, seq_queue, try_read_all, BLOCK_SIZE};
 use std::fs::{File, Metadata};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -105,7 +105,26 @@ impl Handler {
                 })?;
             }
             Mode::DecompressManually => {
-                todo!()
+                rfork_storage::with_compressed_blocks(file, |kind| {
+                    move |data| {
+                        // TODO: This waits for a slot after we have already read.
+                        let slot = tx.prepare_send().ok_or_else(|| {
+                            io::Error::new(io::ErrorKind::Other, "error must have occurred writing")
+                        })?;
+                        let _enter =
+                            tracing::debug_span!("waiting to send to compressor").entered();
+                        self.compressor
+                            .send(compressing::WorkItem {
+                                context: Arc::clone(context),
+                                data: data.to_vec(),
+                                slot,
+                                kind,
+                                compress: false,
+                            })
+                            .unwrap();
+                        Ok(())
+                    }
+                })?;
             }
             Mode::DecompressByReading => {
                 self.with_file_chunks(file, expected_len, tx, |slot, data| {
@@ -158,7 +177,7 @@ impl Handler {
             f(slot, &self.buf[..n])?;
         }
         if total_read != expected_len {
-            // TODO: The writer doesn't know!
+            // The writer will be notified by returning an error
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 "file size changed while reading",
