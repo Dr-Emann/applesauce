@@ -1,8 +1,9 @@
+use crate::threads::Mode;
 use ignore::WalkState;
 use std::fs::Metadata;
 use std::path::{Path, PathBuf};
 
-pub fn for_each_recursive<'a, F>(paths: impl IntoIterator<Item = &'a Path>, f: F)
+pub fn for_each_recursive<'a, F>(paths: impl IntoIterator<Item = &'a Path>, mode: Mode, f: F)
 where
     F: Fn(PathBuf, Metadata) + Send + Sync,
 {
@@ -19,13 +20,13 @@ where
     let walker = builder.build_parallel();
     walker.run(|| {
         Box::new(|entry| {
-            handle_entry(entry, &f);
+            handle_entry(entry, mode, &f);
             WalkState::Continue
         })
     })
 }
 
-fn handle_entry<F>(entry: Result<ignore::DirEntry, ignore::Error>, f: &F)
+fn handle_entry<F>(entry: Result<ignore::DirEntry, ignore::Error>, mode: Mode, f: &F)
 where
     F: Fn(PathBuf, Metadata),
 {
@@ -51,8 +52,17 @@ where
             return;
         }
     };
-    if let Err(e) = crate::check_compressible(path, &metadata) {
-        tracing::debug!("{} is not compressible: {e}", path.display());
+    let res = if mode.is_compressing() {
+        crate::check_compressible(path, &metadata)
+    } else {
+        crate::check_decompressible(&metadata)
+    };
+    if let Err(e) = res {
+        tracing::debug!(
+            "{} is not {}compressible: {e}",
+            path.display(),
+            if mode.is_compressing() { "" } else { "de" }
+        );
         return;
     }
 

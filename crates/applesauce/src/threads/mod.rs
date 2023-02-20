@@ -47,6 +47,12 @@ pub enum Mode {
     DecompressByReading,
 }
 
+impl Mode {
+    pub fn is_compressing(self) -> bool {
+        matches!(self, Self::Compress(_))
+    }
+}
+
 impl BackgroundThreads {
     #[must_use]
     pub fn new() -> Self {
@@ -76,7 +82,7 @@ impl BackgroundThreads {
         P::Task: Send + Sync + 'static,
     {
         let chan = self.reader.chan();
-        scan::for_each_recursive(paths, |path, metadata| {
+        scan::for_each_recursive(paths, mode, |path, metadata| {
             let progress = Box::new(progress.sub_task(&path, metadata.len()));
             chan.send(reader::WorkItem {
                 context: Arc::new(Context {

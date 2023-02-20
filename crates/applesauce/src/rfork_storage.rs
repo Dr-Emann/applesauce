@@ -31,7 +31,6 @@ where
             let mut last_offset: Option<u32> = None;
             for block in block_info {
                 buf.clear();
-
                 match last_offset {
                     Some(o) => {
                         let diff = i64::from(block.offset) - i64::from(o);
@@ -41,12 +40,20 @@ where
                         rfork.seek(SeekFrom::Start(block.offset.into()))?;
                     }
                 }
-                last_offset = Some(block.offset);
-
-                rfork
+                let bytes_read = rfork
                     .by_ref()
                     .take(block.compressed_size.into())
                     .read_to_end(&mut buf)?;
+                if bytes_read < block.compressed_size as usize {
+                    return Err(io::ErrorKind::UnexpectedEof.into());
+                }
+
+                last_offset = Some(
+                    block
+                        .offset
+                        .checked_add(block.compressed_size)
+                        .ok_or(io::ErrorKind::InvalidData)?,
+                );
                 per_block(&buf)?;
             }
         }

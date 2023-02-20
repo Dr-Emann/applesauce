@@ -5,7 +5,7 @@ use crate::{rfork_storage, seq_queue, try_read_all, BLOCK_SIZE};
 use std::fs::{File, Metadata};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use std::{io, mem, thread};
+use std::{io, thread};
 
 pub(super) struct WorkItem {
     pub context: Arc<Context>,
@@ -69,10 +69,9 @@ impl Handler {
             })
             .unwrap();
 
-        if let Err(mut e) = self.read_file_into(&context, &file, file_size, &tx) {
+        if let Err(e) = self.read_file_into(&context, &file, file_size, &tx) {
             if let Some(slot) = tx.prepare_send() {
-                let orig_e = mem::replace(&mut e, io::ErrorKind::Other.into());
-                let _ = slot.finish(Err(orig_e));
+                let _ = slot.finish(Err(io::Error::new(io::ErrorKind::Other, "Error in reader")));
             }
             return Err(e);
         }

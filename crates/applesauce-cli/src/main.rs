@@ -163,7 +163,7 @@ fn main() {
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_timer(time::uptime())
         .with_writer(fmt_writer)
-        .with_filter(LevelFilter::from_level(Level::INFO));
+        .with_filter(LevelFilter::from_level(Level::DEBUG));
     tracing_subscriber::registry()
         .with(chrome_layer)
         .with(fmt_layer)

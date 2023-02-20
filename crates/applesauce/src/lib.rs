@@ -129,6 +129,20 @@ fn check_compressible(path: &Path, metadata: &Metadata) -> io::Result<()> {
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
+fn check_decompressible(metadata: &Metadata) -> io::Result<()> {
+    if !metadata.is_file() {
+        return Err(io::Error::new(io::ErrorKind::Other, "not a file"));
+    }
+    if metadata.st_flags() & libc::UF_COMPRESSED == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "file is not compressed",
+        ));
+    }
+    Ok(())
+}
+
 fn vol_supports_compression_cap(mnt_root: &CStr) -> io::Result<bool> {
     #[repr(C)]
     struct VolAttrs {

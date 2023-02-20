@@ -90,62 +90,9 @@ impl Read for ResourceFork<'_> {
         } else {
             rc as usize
         };
-        Ok(cmp::min(remaining_len, buf.len()))
-    }
-
-    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
-        let xattr_len = loop {
-            // SAFETY:
-            //   fd is valid
-            //   xattr name is valid, and null terminated
-            //   a null value and size are allowed
-            let rc = unsafe {
-                libc::fgetxattr(
-                    self.file.as_raw_fd(),
-                    XATTR_NAME.as_ptr(),
-                    ptr::null_mut(),
-                    0,
-                    0,
-                    XATTR_SHOWCOMPRESSION,
-                )
-            };
-
-            let xattr_len = if rc >= 0 {
-                rc as usize
-            } else {
-                let e = io::Error::last_os_error();
-                if e.kind() == io::ErrorKind::Interrupted {
-                    continue;
-                }
-                if e.raw_os_error() == Some(libc::ENOATTR) {
-                    0
-                } else {
-                    return Err(e);
-                }
-            };
-            break xattr_len;
-        };
-
-        let remaining_bytes = xattr_len.saturating_sub(self.offset.try_into().unwrap());
-        if remaining_bytes == 0 {
-            return Ok(0);
-        }
-
-        let buf_start = buf.len();
-        buf.resize(buf_start + remaining_bytes, 0);
-
-        let result = self.read(&mut buf[buf_start..]);
-        match result {
-            Ok(n) => {
-                if n < remaining_bytes {
-                    buf.truncate(buf_start + n);
-                }
-            }
-            Err(_) => {
-                buf.truncate(buf_start);
-            }
-        }
-        result
+        let bytes_read = cmp::min(remaining_len, buf.len());
+        self.offset += u32::try_from(bytes_read).unwrap();
+        Ok(bytes_read)
     }
 }
 
@@ -327,5 +274,7 @@ mod tests {
         rfork.rewind().unwrap();
         assert_eq!(rfork.read(&mut buf).unwrap(), data.len());
         assert_eq!(&buf[..data.len()], data);
+        // We read it all
+        assert_eq!(rfork.read(&mut buf).unwrap(), 0);
     }
 }
