@@ -1,4 +1,4 @@
-use crate::threads::{writer, BgWork, Context, WorkHandler};
+use crate::threads::{writer, BgWork, Context, Mode, WorkHandler};
 use crate::{
     compressor::{self, Compressor},
     seq_queue, BLOCK_SIZE,
@@ -12,8 +12,6 @@ pub(super) struct WorkItem {
     pub context: Arc<Context>,
     pub data: Vec<u8>,
     pub kind: compressor::Kind,
-    pub level: u32,
-    pub compress: bool,
     pub slot: seq_queue::Slot<io::Result<writer::Chunk>>,
 }
 
@@ -49,10 +47,15 @@ impl WorkHandler<WorkItem> for Handler {
         // TODO: Unwrap?
         let compressor = self.compressors[item.kind as usize]
             .get_or_insert_with(|| item.kind.compressor().unwrap());
-        let size = if item.compress {
-            compressor.compress(&mut self.buf, &item.data, item.level)
-        } else {
-            compressor.decompress(&mut self.buf, &item.data)
+        let size = match item.context.mode {
+            Mode::Compress { kind, level } => {
+                debug_assert_eq!(kind, item.kind);
+                compressor.compress(&mut self.buf, &item.data, level)
+            }
+            Mode::DecompressManually => compressor.decompress(&mut self.buf, &item.data),
+            Mode::DecompressByReading => {
+                panic!("decompressing by reading should not be using the compressor thread")
+            }
         };
         let size = match size {
             Ok(size) => size,
