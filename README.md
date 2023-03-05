@@ -78,10 +78,29 @@ the others.
 
 Applesauce is based on afsctool, but offers several key improvements, including:
 
-- Better performance
-- Improved multithreading
-- Reduced memory usage
-- Written in Rust
+#### Improved Multithreading
+
+afcstool can compress multiple files in parallel, but applesauce parallelizes at
+the block level, so even a single file can be compressed in parallel
+
+#### Reduced Memory Usage
+
+afcstool will load the entire file into memory before compressing it
+(although it does attempt to use mmap for large files). Applesauce will only
+keep the block(s) currently being compressed in memory.
+
+#### Better Error Handling
+
+afcstool overwrites files in place. Although it attempts to restore the file
+if an error occurs, if it is forcefully terminated while compressing a file,
+the file may be left in an invalid state.
+
+Applesauce compresses/decompresses files to a temporary file and then atomically
+renames the temporary file to the original file only when the operation is
+complete.
+
+This is no replacement for backups: please do not use applesauce on files you
+cannot afford to lose.
 
 ## License
 Applesauce is licensed under the GNU General Public License version 3 (GPLv3).
