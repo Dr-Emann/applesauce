@@ -5,8 +5,8 @@ compresses, decompresses, and prints information about compressed files for
 HFS+/APFS transparent compression on macOS. It is based on
 [afsctool](https://github.com/RJVB/afsctool) and offers several key
 improvements, including better performance, improved multithreading (even for a
-single file), reduced memory usage, and is written in Rust. Applesauce supports
-three compression algorithms: LZFSE, LZVN, and ZLIB.
+single file), and reduced memory usage. Applesauce supports all three compression
+algorithms used by HFS+/APFS: LZFSE, LZVN, and ZLIB.
 
 ## Installation
 
@@ -58,16 +58,14 @@ Applesauce has the following key features:
 Applesauce supports three compression algorithms:
 
 - LZFSE: This compression algorithm was developed by Apple for use on iOS and
-  macOS. It is a very fast compression algorithm that offers a good balance
-  between compression ratio and speed. LZFSE is particularly good at
-  compressing data that has lots of repeated patterns.
+  macOS. It is a fast compression algorithm that offers a good balance
+  between compression ratio and speed.
 - LZVN: This compression algorithm was also developed by Apple for use on iOS
   and macOS. It is optimized for use on 64-bit processors and offers a high
-  compression ratio. LZVN is particularly good at compressing image and video
-  data.
+  compression ratio.
 - ZLIB: This is a widely used compression algorithm that is implemented in many
-  different software packages. It is slower than LZFSE and LZVN but offers a
-  higher compression ratio. ZLIB is particularly good at compressing text data.
+  software packages. It is slower than LZFSE and LZVN, but can offer a higher
+  compression ratio.
 
 Applesauce defaults to using LZFSE compression.
 Depending on the type of data being compressed and the desired balance between

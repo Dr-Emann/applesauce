@@ -3,6 +3,8 @@ name = "applesauce-cli"
 version = "0.1.1"
 edition = "2021"
 license = "GPL-3.0-or-later"
+description = "A command-line interface for compressing and decompressing files using macos transparent compression"
+repository = "https://github.com/Dr-Emann/applesauce"
 
 [[bin]]
 name = "applesauce"
@@ -17,7 +19,7 @@ lzfse = ["applesauce/lzfse"]
 lzvn = ["applesauce/lzvn"]
 
 [dependencies]
-applesauce = { path = "../applesauce", default-features = false }
+applesauce = { version = "0.1", path = "../applesauce", default-features = false }
 
 cfg-if = "1.0.0"
 clap = { version = "4.0", features = ["derive"] }

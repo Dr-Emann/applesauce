@@ -6,6 +6,7 @@ version = "0.1.1"
 edition = "2021"
 keywords = ["compression", "afsc", "decmpfs"]
 categories = ["compression"]
+repository = "https://github.com/Dr-Emann/applesauce"
 
 [lib]
 
@@ -19,7 +20,7 @@ lzvn = ["dep:lzfse-sys"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-resource-fork = { path = "../resource-fork" }
+resource-fork = { version = "0.1", path = "../resource-fork" }
 
 crossbeam-channel = "0.5.6"
 ignore = "0.4.18"
