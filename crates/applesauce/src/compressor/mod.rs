@@ -24,7 +24,7 @@ pub(crate) trait CompressorImpl {
         Self::blocks_start(block_count)
     }
 
-    fn compress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize>;
+    fn compress(&mut self, dst: &mut [u8], src: &[u8], level: u32) -> io::Result<usize>;
     fn decompress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize>;
 
     fn read_block_info<R: io::Read + io::Seek>(
@@ -84,14 +84,14 @@ impl Compressor {
         self.kind().blocks_start(block_count)
     }
 
-    pub fn compress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
+    pub fn compress(&mut self, dst: &mut [u8], src: &[u8], level: u32) -> io::Result<usize> {
         match self.0 {
             #[cfg(feature = "zlib")]
-            Data::Zlib(ref mut i) => i.compress(dst, src),
+            Data::Zlib(ref mut i) => i.compress(dst, src, level),
             #[cfg(feature = "lzfse")]
-            Data::Lzfse(ref mut i) => i.compress(dst, src),
+            Data::Lzfse(ref mut i) => i.compress(dst, src, level),
             #[cfg(feature = "lzvn")]
-            Data::Lzvn(ref mut i) => i.compress(dst, src),
+            Data::Lzvn(ref mut i) => i.compress(dst, src, level),
         }
     }
 
@@ -219,7 +219,7 @@ mod tests {
 
     pub(super) fn compressor_round_trip<C: CompressorImpl>(c: &mut C) {
         let mut buf = vec![0u8; PLAINTEXT.len() * 2];
-        let len = c.compress(&mut buf, PLAINTEXT).unwrap();
+        let len = c.compress(&mut buf, PLAINTEXT, 6).unwrap();
         assert!(len > 0);
         assert!(len < buf.len());
         let ciphertext = &buf[..len];

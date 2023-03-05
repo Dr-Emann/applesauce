@@ -237,7 +237,7 @@ impl WorkHandler<WorkItem> for Handler {
         let _entered = tracing::info_span!("writing file", path=%context.path.display()).entered();
 
         let res = match context.mode {
-            Mode::Compress(kind) => self.write_compressed_file(item, kind),
+            Mode::Compress { kind, .. } => self.write_compressed_file(item, kind),
             Mode::DecompressManually | Mode::DecompressByReading => {
                 self.write_uncompressed_file(item)
             }

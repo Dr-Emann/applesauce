@@ -33,7 +33,7 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         (block_count + 1) * mem::size_of::<u32>() as u64
     }
 
-    fn compress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
+    fn compress(&mut self, dst: &mut [u8], src: &[u8], _level: u32) -> io::Result<usize> {
         assert!(dst.len() > src.len());
 
         let max_compress_size = if I::UNCOMPRESSED_PREFIX.is_some() {

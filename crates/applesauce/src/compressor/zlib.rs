@@ -16,10 +16,10 @@ impl super::CompressorImpl for Zlib {
         Self::blocks_start(block_count) + u64::try_from(ZLIB_TRAILER.len()).unwrap()
     }
 
-    fn compress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
+    fn compress(&mut self, dst: &mut [u8], src: &[u8], level: u32) -> io::Result<usize> {
         assert!(dst.len() > src.len());
 
-        let encoder = ZlibEncoder::new(src, Compression::default());
+        let encoder = ZlibEncoder::new(src, Compression::new(level));
         let bytes_read = try_read_all(encoder, &mut dst[..src.len()])?;
         if bytes_read == src.len() {
             tracing::trace!("writing uncompressed data");

@@ -42,14 +42,14 @@ pub struct Context {
 
 #[derive(Debug, Copy, Clone)]
 pub enum Mode {
-    Compress(compressor::Kind),
+    Compress { kind: compressor::Kind, level: u32 },
     DecompressManually,
     DecompressByReading,
 }
 
 impl Mode {
     pub fn is_compressing(self) -> bool {
-        matches!(self, Self::Compress(_))
+        matches!(self, Self::Compress { .. })
     }
 }
 

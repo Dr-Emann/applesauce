@@ -12,6 +12,7 @@ pub(super) struct WorkItem {
     pub context: Arc<Context>,
     pub data: Vec<u8>,
     pub kind: compressor::Kind,
+    pub level: u32,
     pub compress: bool,
     pub slot: seq_queue::Slot<io::Result<writer::Chunk>>,
 }
@@ -45,16 +46,15 @@ impl WorkHandler<WorkItem> for Handler {
         let _entered =
             tracing::debug_span!("compressing block", path=%item.context.path.display()).entered();
 
-        let f = if item.compress {
-            Compressor::compress
-        } else {
-            Compressor::decompress
-        };
-
         // TODO: Unwrap?
         let compressor = self.compressors[item.kind as usize]
             .get_or_insert_with(|| item.kind.compressor().unwrap());
-        let size = match f(compressor, &mut self.buf, &item.data) {
+        let size = if item.compress {
+            compressor.compress(&mut self.buf, &item.data, item.level)
+        } else {
+            compressor.decompress(&mut self.buf, &item.data)
+        };
+        let size = match size {
             Ok(size) => size,
             Err(e) => {
                 if item.slot.finish(Err(e)).is_err() {

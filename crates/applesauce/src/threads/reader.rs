@@ -87,7 +87,7 @@ impl Handler {
         tx: &seq_queue::Sender<io::Result<writer::Chunk>>,
     ) -> io::Result<()> {
         match context.mode {
-            Mode::Compress(kind) => {
+            Mode::Compress { kind, level } => {
                 let compressor = self.compressor.clone();
                 self.with_file_chunks(file, expected_len, tx, |slot, data| {
                     let _enter = tracing::debug_span!("waiting to send to compressor").entered();
@@ -97,6 +97,7 @@ impl Handler {
                             data: data.to_vec(),
                             slot,
                             kind,
+                            level,
                             compress: true,
                         })
                         .unwrap();
@@ -118,6 +119,7 @@ impl Handler {
                                 data: data.to_vec(),
                                 slot,
                                 kind,
+                                level: 0,
                                 compress: false,
                             })
                             .unwrap();

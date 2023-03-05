@@ -235,12 +235,14 @@ impl FileCompressor {
         &mut self,
         paths: impl IntoIterator<Item = &'a Path>,
         kind: Kind,
+        level: u32,
         progress: &P,
     ) where
         P: Progress + Send + Sync,
         P::Task: Send + Sync + 'static,
     {
-        self.bg_threads.scan(Mode::Compress(kind), paths, progress);
+        self.bg_threads
+            .scan(Mode::Compress { kind, level }, paths, progress);
     }
 
     #[tracing::instrument(skip_all)]
@@ -365,7 +367,7 @@ mod tests {
         let old_hash = recursive_hash(dir);
 
         let mut fc = FileCompressor::new();
-        fc.recursive_compress(iter::once(dir), compressor_kind, &NoProgress);
+        fc.recursive_compress(iter::once(dir), compressor_kind, 2, &NoProgress);
         drop(fc);
 
         let new_hash = recursive_hash(dir);

@@ -64,6 +64,10 @@ struct Compress {
     #[arg(required = true)]
     paths: Vec<PathBuf>,
 
+    /// The compression level to use
+    #[arg(short, long, default_value_t = 6)]
+    level: u32,
+
     /// The type of compression to use
     #[arg(short, long, value_enum, default_value_t = Compression::default())]
     compression: Compression,
@@ -170,12 +174,17 @@ fn main() {
         .init();
 
     match cli.command {
-        Commands::Compress(Compress { paths, compression }) => {
+        Commands::Compress(Compress {
+            paths,
+            compression,
+            level,
+        }) => {
             {
                 let mut compressor = applesauce::FileCompressor::new();
                 compressor.recursive_compress(
                     paths.iter().map(Path::new),
                     compression.into(),
+                    level,
                     &progress_bars,
                 );
             }
