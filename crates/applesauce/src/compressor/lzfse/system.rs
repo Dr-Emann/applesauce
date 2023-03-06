@@ -20,8 +20,8 @@ impl lz::Impl for Impl {
     }
 
     unsafe fn encode(dst: &mut [u8], src: &[u8], scratch: &mut [u8]) -> usize {
-        // SAFETY: function is always safe to call
         debug_assert!(
+            // SAFETY: function is always safe to call
             scratch.len() >= unsafe { bindings::compression_encode_scratch_buffer_size(ALGORITHM) }
         );
 
@@ -41,8 +41,8 @@ impl lz::Impl for Impl {
     }
 
     unsafe fn decode(dst: &mut [u8], src: &[u8], scratch: &mut [u8]) -> usize {
-        // SAFETY: function is always safe to call
         debug_assert!(
+            // SAFETY: function is always safe to call
             scratch.len() >= unsafe { bindings::compression_decode_scratch_buffer_size(ALGORITHM) }
         );
 
