@@ -52,9 +52,3 @@ impl lz::Impl for Impl {
 extern "C" {
     fn lzfse_encode_scratch_size() -> usize;
 }
-
-#[test]
-fn round_trip() {
-    let mut compressor = Lzfse::new();
-    super::tests::compressor_round_trip(&mut compressor);
-}

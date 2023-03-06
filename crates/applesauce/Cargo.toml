@@ -11,11 +11,14 @@ repository = "https://github.com/Dr-Emann/applesauce"
 [lib]
 
 [features]
-default = ["zlib", "lzfse", "lzvn"]
+default = ["zlib", "system-lzfse", "lzvn"]
 
 zlib = ["dep:flate2"]
 lzfse = ["dep:lzfse-sys"]
 lzvn = ["dep:lzfse-sys"]
+
+# If specified, takes preceidence over lzfse feature
+system-lzfse = []
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

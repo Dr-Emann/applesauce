@@ -1,7 +1,8 @@
-#[cfg(feature = "lzfse")]
-use self::lzfse::Lzfse;
 #[cfg(feature = "lzvn")]
 use self::lzvn::Lzvn;
+// Enable if feature lzfse or system-lzfse is enabled:
+#[cfg(any(feature = "lzfse", feature = "system-lzfse"))]
+use self::lzfse::Lzfse;
 #[cfg(feature = "zlib")]
 use self::zlib::Zlib;
 use crate::decmpfs;
@@ -10,7 +11,7 @@ use std::{fmt, io};
 
 #[cfg(any(feature = "lzfse", feature = "lzvn"))]
 mod lz;
-#[cfg(feature = "lzfse")]
+#[cfg(any(feature = "lzfse", feature = "system-lzfse"))]
 mod lzfse;
 #[cfg(feature = "lzvn")]
 mod lzvn;
