@@ -69,6 +69,7 @@ impl Handler {
         let mut add_compressed_chunk = |chunk: &Chunk| -> io::Result<()> {
             total_compressed_size += u64::try_from(chunk.block.len()).unwrap();
             if total_compressed_size > context.orig_size {
+                context.progress.not_compressible_enough(&context.path);
                 return Err(io::Error::new(
                     io::ErrorKind::Other,
                     "file grew when compressed",

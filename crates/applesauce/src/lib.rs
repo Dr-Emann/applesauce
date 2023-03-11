@@ -44,7 +44,7 @@ macro_rules! cstr {
 }
 
 use crate::compressor::Kind;
-use crate::progress::Progress;
+use crate::progress::{Progress, SkipReason};
 use crate::threads::{BackgroundThreads, Mode};
 pub(crate) use cstr;
 
@@ -70,31 +70,28 @@ const fn num_blocks(size: u64) -> u64 {
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
-fn check_compressible(path: &Path, metadata: &Metadata) -> io::Result<()> {
+fn check_compressible(path: &Path, metadata: &Metadata) -> Result<(), SkipReason> {
     if !metadata.is_file() {
-        return Err(io::Error::new(io::ErrorKind::Other, "not a file"));
+        return Err(SkipReason::NotFile);
     }
     if metadata.st_flags() & libc::UF_COMPRESSED != 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "file already compressed",
-        ));
+        return Err(SkipReason::AlreadyCompressed);
     }
     if metadata.len() >= u64::from(u32::MAX) {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "file is too large to be compressed",
-        ));
+        return Err(SkipReason::TooLarge(metadata.len()));
     }
 
     // TODO: Try a local buffer for non-alloc fast path
-    let path = CString::new(path.as_os_str().as_bytes())?;
+    let path = match CString::new(path.as_os_str().as_bytes()) {
+        Ok(path) => path,
+        Err(e) => return Err(SkipReason::ReadError(e.into())),
+    };
 
     let mut statfs_buf = MaybeUninit::<libc::statfs>::uninit();
     // SAFETY: path is a valid pointer, and null terminated, statfs_buf is a valid ptr, and is used as an out ptr
     let rc = unsafe { libc::statfs(path.as_ptr(), statfs_buf.as_mut_ptr()) };
     if rc != 0 {
-        return Err(io::Error::last_os_error());
+        return Err(SkipReason::ReadError(io::Error::last_os_error()));
     }
     // SAFETY: if statfs returned non-zero, we returned already, it should have filled in statfs_buf
     let statfs_buf = unsafe { statfs_buf.assume_init_ref() };
@@ -106,39 +103,30 @@ fn check_compressible(path: &Path, metadata: &Metadata) -> io::Result<()> {
         // ZFS doesn't do HFS/decmpfs compression. It may pretend to, but in
         // that case it will *de*compress the data before committing it. We
         // won't play that game, wasting cycles and rewriting data for nothing.
-        return Err(io::Error::new(io::ErrorKind::Other, "filesystem is zfs"));
+        return Err(SkipReason::ZfsFilesystem);
     }
 
     if xattr::is_present(&path, resource_fork::XATTR_NAME)?
         || xattr::is_present(&path, decmpfs::XATTR_NAME)?
     {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "file already has required xattrs",
-        ));
+        return Err(SkipReason::HasRequiredXattr);
     }
 
     let root_path = cstr_from_bytes_until_null(&statfs_buf.f_mntonname)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "mount name invalid"))?;
     if !vol_supports_compression_cap(root_path)? {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "compression unsupported by fs",
-        ));
+        return Err(SkipReason::FsNotSupported);
     }
     Ok(())
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
-fn check_decompressible(metadata: &Metadata) -> io::Result<()> {
+fn check_decompressible(metadata: &Metadata) -> Result<(), SkipReason> {
     if !metadata.is_file() {
-        return Err(io::Error::new(io::ErrorKind::Other, "not a file"));
+        return Err(SkipReason::NotFile);
     }
     if metadata.st_flags() & libc::UF_COMPRESSED == 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "file is not compressed",
-        ));
+        return Err(SkipReason::NotCompressed);
     }
     Ok(())
 }
@@ -317,7 +305,11 @@ mod tests {
     impl Progress for NoProgress {
         type Task = NoProgress;
 
-        fn sub_task(&self, _path: &Path, _size: u64) -> Self::Task {
+        fn error(&self, path: &Path, message: &str) {
+            panic!("Expected no errors, got {message} for {path:?}");
+        }
+
+        fn file_task(&self, _path: &Path, _size: u64) -> Self::Task {
             NoProgress
         }
     }

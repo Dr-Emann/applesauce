@@ -1,4 +1,4 @@
-use applesauce::progress::{Progress, Task};
+use applesauce::progress::{Progress, SkipReason, Task};
 use indicatif::{HumanDuration, MultiProgress, ProgressBar, ProgressState, ProgressStyle};
 use std::fmt;
 use std::io::Write;
@@ -6,12 +6,22 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+// Delay until an individual progress bar will appear for a single file
 const DELAY: Duration = Duration::from_millis(700);
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum Verbosity {
+    Quiet,
+    #[default]
+    Normal,
+    Verbose,
+}
 
 pub struct ProgressBars {
     style: ProgressStyle,
     total_bar: ProgressBar,
     bars: MultiProgress,
+    verbosity: Verbosity,
 }
 
 impl ProgressBars {
@@ -21,7 +31,7 @@ impl ProgressBars {
 }
 
 impl ProgressBars {
-    pub fn new() -> Self {
+    pub fn new(verbosity: Verbosity) -> Self {
         let bars = MultiProgress::new();
         let smoothed_eta = |s: &ProgressState, w: &mut dyn fmt::Write| match (s.pos(), s.len()) {
             (pos, Some(len)) if pos != 0 => write!(
@@ -54,6 +64,7 @@ impl ProgressBars {
             style,
             total_bar,
             bars,
+            verbosity,
         }
     }
 
@@ -80,6 +91,7 @@ pub struct ProgressWithTotal {
     total: ProgressBar,
     single: ProgressBar,
     state: Mutex<State>,
+    verbosity: Verbosity,
 }
 
 impl ProgressWithTotal {
@@ -102,7 +114,29 @@ impl ProgressWithTotal {
 impl Progress for ProgressBars {
     type Task = ProgressWithTotal;
 
-    fn sub_task(&self, path: &Path, size: u64) -> Self::Task {
+    fn error(&self, path: &Path, message: &str) {
+        self.total_bar
+            .println(format!("{}: error: {message}", path.display()))
+    }
+
+    fn file_skipped(&self, path: &Path, why: SkipReason) {
+        let required_verbosity = match why {
+            SkipReason::NotFile | SkipReason::AlreadyCompressed | SkipReason::NotCompressed => {
+                Verbosity::Verbose
+            }
+            SkipReason::TooLarge(_)
+            | SkipReason::ReadError(_)
+            | SkipReason::ZfsFilesystem
+            | SkipReason::HasRequiredXattr
+            | SkipReason::FsNotSupported => Verbosity::Normal,
+        };
+        if self.verbosity >= required_verbosity {
+            self.total_bar
+                .println(format!("{}: Skipped: {why}", path.display()))
+        }
+    }
+
+    fn file_task(&self, path: &Path, size: u64) -> Self::Task {
         let prefix = crate::truncate_path(path, self.prefix_len());
 
         let total = self.total_bar.clone();
@@ -119,6 +153,7 @@ impl Progress for ProgressBars {
                 bars: self.bars.clone(),
                 time_to_attach: Instant::now() + DELAY,
             }),
+            verbosity: self.verbosity,
         }
     }
 }
@@ -131,8 +166,14 @@ impl Task for ProgressWithTotal {
     }
 
     fn error(&self, message: &str) {
-        self.single.set_message(message.to_string());
-        self.maybe_attach();
+        self.total.println(message);
+    }
+
+    fn not_compressible_enough(&self, path: &Path) {
+        if self.verbosity >= Verbosity::Normal {
+            let message = format!("{}: Not compressible enough, file grew", path.display());
+            self.total.println(message);
+        }
     }
 }
 

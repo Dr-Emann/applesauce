@@ -1,4 +1,4 @@
-use crate::progress::{ProgressBarWriter, ProgressBars};
+use crate::progress::{ProgressBarWriter, ProgressBars, Verbosity};
 use applesauce::{compressor, info};
 use cfg_if::cfg_if;
 use clap::Parser;
@@ -9,12 +9,11 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::{fmt, io};
 use tracing::metadata::LevelFilter;
-use tracing::Level;
 use tracing_chrome::ChromeLayerBuilder;
 use tracing_subscriber::fmt::time;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::Layer;
+use tracing_subscriber::{EnvFilter, Layer};
 
 mod progress;
 
@@ -30,6 +29,23 @@ struct Cli {
     /// The passed file can be passed to chrome at chrome://tracing
     #[arg(long, global(true))]
     chrome_tracing: Option<PathBuf>,
+
+    #[arg(short, long, global(true), action = clap::ArgAction::Count)]
+    verbose: u8,
+
+    #[arg(short, long, global(true), action = clap::ArgAction::Count, conflicts_with = "verbose")]
+    quiet: u8,
+}
+
+impl Cli {
+    fn verbosity(&self) -> Verbosity {
+        let verbosity = self.verbose as i8 - self.quiet as i8;
+        match verbosity {
+            ..=-1 => Verbosity::Quiet,
+            0 => Verbosity::Normal,
+            1.. => Verbosity::Verbose,
+        }
+    }
 }
 
 #[derive(Debug, clap::Subcommand)]
@@ -153,7 +169,7 @@ fn main() {
 
     let mut _chrome_guard = None;
     let chrome_file = chrome_tracing_file(cli.chrome_tracing.as_deref());
-    let chrome_layer = chrome_file.map(|f| {
+    let chrome_layer: Option<_> = chrome_file.map(|f| {
         let (layer, guard) = ChromeLayerBuilder::new()
             .writer(f)
             .include_args(true)
@@ -162,7 +178,7 @@ fn main() {
         layer
     });
 
-    let progress_bars = ProgressBars::new();
+    let progress_bars = ProgressBars::new(cli.verbosity());
     let fmt_writer = Mutex::new(LineWriter::new(ProgressBarWriter::new(
         progress_bars.multi_progress().clone(),
         std::io::stderr(),
@@ -171,7 +187,12 @@ fn main() {
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_timer(time::uptime())
         .with_writer(fmt_writer)
-        .with_filter(LevelFilter::from_level(Level::DEBUG));
+        .with_filter(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::OFF.into())
+                .from_env_lossy(),
+        );
+
     tracing_subscriber::registry()
         .with(chrome_layer)
         .with(fmt_layer)

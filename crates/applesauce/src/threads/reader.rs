@@ -70,7 +70,12 @@ impl Handler {
             .unwrap();
 
         if let Err(e) = self.read_file_into(&context, &file, file_size, &tx) {
+            context
+                .progress
+                .error(&format!("Error reading {}: {}", context.path.display(), e));
+            // If we can't get a slot, the writer already had an error, so we can just return.
             if let Some(slot) = tx.prepare_send() {
+                // Likewise, if we get a slot, but the channel closes, the writer must have seen an error
                 let _ = slot.finish(Err(io::Error::new(io::ErrorKind::Other, "Error in reader")));
             }
             return Err(e);
@@ -106,6 +111,7 @@ impl Handler {
                 rfork_storage::with_compressed_blocks(file, |kind| {
                     move |data| {
                         // TODO: This waits for a slot after we have already read.
+                        // TODO: This should be able to exit early, without an error
                         let slot = tx.prepare_send().ok_or_else(|| {
                             io::Error::new(io::ErrorKind::Other, "error must have occurred writing")
                         })?;
@@ -141,13 +147,14 @@ impl Handler {
         Ok(())
     }
 
+    // return true if reading succeeded, false if the writer closed the channel
     fn with_file_chunks(
         &mut self,
         file: &File,
         expected_len: u64,
         tx: &seq_queue::Sender<io::Result<writer::Chunk>>,
         mut f: impl FnMut(Slot<io::Result<writer::Chunk>>, &[u8]) -> io::Result<()>,
-    ) -> io::Result<()> {
+    ) -> io::Result<bool> {
         let mut total_read = 0;
         let block_span = tracing::debug_span!("reading blocks");
         loop {
@@ -155,9 +162,10 @@ impl Handler {
 
             let slot = {
                 let _enter = tracing::debug_span!("waiting for free slot").entered();
-                tx.prepare_send().ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::Other, "error must have occurred writing")
-                })?
+                match tx.prepare_send() {
+                    Some(slot) => slot,
+                    None => return Ok(false),
+                }
             };
             let n = try_read_all(file, &mut *self.buf)?;
             if n == 0 {
@@ -180,7 +188,7 @@ impl Handler {
                 "file size changed while reading",
             ));
         }
-        Ok(())
+        Ok(true)
     }
 }
 

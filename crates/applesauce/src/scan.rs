@@ -1,54 +1,71 @@
+use crate::progress::{Progress, SkipReason};
 use crate::threads::Mode;
 use ignore::WalkState;
 use std::fs::Metadata;
 use std::path::{Path, PathBuf};
 
-pub fn for_each_recursive<'a, F>(paths: impl IntoIterator<Item = &'a Path>, mode: Mode, f: F)
-where
-    F: Fn(PathBuf, Metadata) + Send + Sync,
-{
-    let mut paths = paths.into_iter();
-    let Some(first) = paths.next() else { return };
-    let mut builder = ignore::WalkBuilder::new(first);
-    // We don't want to ignore hidden, from gitignore, etc
-    builder.standard_filters(false);
-    // Add the rest of the paths
-    paths.for_each(|p| {
-        builder.add(p);
-    });
-
-    let walker = builder.build_parallel();
-    walker.run(|| {
-        Box::new(|entry| {
-            handle_entry(entry, mode, &f);
-            WalkState::Continue
-        })
-    })
+pub struct Walker<'a, P> {
+    paths: ignore::WalkParallel,
+    progress: &'a P,
 }
 
-fn handle_entry<F>(entry: Result<ignore::DirEntry, ignore::Error>, mode: Mode, f: &F)
-where
+impl<'a, P: Progress + Send + Sync> Walker<'a, P> {
+    pub fn new<'b>(paths: impl IntoIterator<Item = &'b Path>, progress: &'a P) -> Self {
+        let mut paths = paths.into_iter();
+        let first = paths.next().expect("No paths given");
+        let mut builder = ignore::WalkBuilder::new(first);
+        // We don't want to ignore hidden, from gitignore, etc
+        builder.standard_filters(false);
+        // Add the rest of the paths
+        paths.for_each(|p| {
+            builder.add(p);
+        });
+
+        Self {
+            paths: builder.build_parallel(),
+            progress,
+        }
+    }
+
+    pub fn run(self, mode: Mode, f: impl Fn(PathBuf, Metadata) + Send + Sync) {
+        self.paths.run(|| {
+            Box::new(|entry| {
+                handle_entry(entry, mode, self.progress, &f);
+                WalkState::Continue
+            })
+        })
+    }
+}
+
+fn handle_entry<F>(
+    entry: Result<ignore::DirEntry, ignore::Error>,
+    mode: Mode,
+    progress: &impl Progress,
+    f: &F,
+) where
     F: Fn(PathBuf, Metadata),
 {
     let entry = match entry {
         Ok(entry) => entry,
         Err(e) => {
-            tracing::warn!("error scanning: {e}");
+            progress.error(Path::new("?"), &format!("error scanning: {}", e));
             return;
         }
     };
     let path = entry.path();
 
-    // We explicitly only want actual files
-    #[allow(clippy::filetype_is_file)]
-    if !entry.file_type().map_or(false, |ty| ty.is_file()) {
+    let file_type = entry
+        .file_type()
+        .expect("Only stdin should have no file_type");
+
+    if file_type.is_dir() {
         return;
     }
 
     let metadata = match entry.metadata() {
         Ok(metadata) => metadata,
         Err(e) => {
-            tracing::warn!("unable to get metadata for {}: {e}", path.display());
+            progress.file_skipped(path, SkipReason::ReadError(e.into_io_error().unwrap()));
             return;
         }
     };
@@ -58,11 +75,7 @@ where
         crate::check_decompressible(&metadata)
     };
     if let Err(e) = res {
-        tracing::debug!(
-            "{} is not {}compressible: {e}",
-            path.display(),
-            if mode.is_compressing() { "" } else { "de" }
-        );
+        progress.file_skipped(path, e);
         return;
     }
 

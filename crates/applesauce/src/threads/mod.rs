@@ -82,8 +82,9 @@ impl BackgroundThreads {
         P::Task: Send + Sync + 'static,
     {
         let chan = self.reader.chan();
-        scan::for_each_recursive(paths, mode, |path, metadata| {
-            let progress = Box::new(progress.sub_task(&path, metadata.len()));
+        let walker = scan::Walker::new(paths, progress);
+        walker.run(mode, |path, metadata| {
+            let progress = Box::new(progress.file_task(&path, metadata.len()));
             chan.send(reader::WorkItem {
                 context: Arc::new(Context {
                     path,
