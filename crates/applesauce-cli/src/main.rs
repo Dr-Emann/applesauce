@@ -147,7 +147,8 @@ fn chrome_tracing_file(path: Option<&Path>) -> Option<impl io::Write> {
     let file = match File::create(path) {
         Ok(file) => file,
         Err(e) => {
-            tracing::error!("Unable to open chrome layer: {e}");
+            // Tracing isn't set up yet, log the old-fashioned way
+            eprintln!("Unable to open chrome layer: {e}");
             return None;
         }
     };

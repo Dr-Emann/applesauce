@@ -1,7 +1,8 @@
 use crate::seq_queue::Slot;
 use crate::threads::writer::Chunk;
 use crate::threads::{compressing, writer, BgWork, Context, Mode, WorkHandler};
-use crate::{rfork_storage, seq_queue, try_read_all, BLOCK_SIZE};
+use crate::{rfork_storage, seq_queue, try_read_all};
+use applesauce_core::BLOCK_SIZE;
 use std::fs::{File, Metadata};
 use std::num::NonZeroUsize;
 use std::sync::Arc;

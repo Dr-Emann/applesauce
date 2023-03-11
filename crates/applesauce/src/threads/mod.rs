@@ -1,5 +1,6 @@
 use crate::progress::{self, Progress};
-use crate::{compressor, scan};
+use crate::scan;
+use applesauce_core::compressor;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

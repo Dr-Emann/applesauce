@@ -1,0 +1,28 @@
+[package]
+name = "applesauce-core"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+default = ["zlib", "system-lzfse", "lzvn"]
+
+zlib = ["dep:flate2"]
+lzfse = ["dep:lzfse-sys"]
+lzvn = ["dep:lzfse-sys"]
+
+# If specified, takes preceidence over lzfse feature
+system-lzfse = ["lzfse"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libc = "0.2.127"
+memchr = "2.5"
+tracing = "0.1.36"
+
+flate2 = { version = "1.0", optional = true }
+
+# pin to an exact version, since we depend on internal implementation details
+lzfse-sys = { version = "=1.0.0", optional = true }

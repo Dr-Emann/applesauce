@@ -1,7 +1,8 @@
-use crate::compressor::Kind;
-use crate::decmpfs::CompressionType;
 use crate::threads::{BgWork, Context, Mode, WorkHandler};
-use crate::{compressor, decmpfs, num_blocks, reset_times, seq_queue, set_flags, xattr};
+use crate::{reset_times, seq_queue, set_flags, xattr};
+use applesauce_core::compressor::{self, Kind};
+use applesauce_core::decmpfs::CompressionType;
+use applesauce_core::{decmpfs, num_blocks, BLOCK_SIZE};
 use resource_fork::ResourceFork;
 use std::fs::{File, Metadata};
 use std::io::{BufWriter, Seek, SeekFrom, Write};
@@ -179,7 +180,7 @@ impl Handler {
         copy_xattrs(&item.file, tmp_file.as_file())?;
 
         let mut resource_fork =
-            BufWriter::with_capacity(crate::BLOCK_SIZE, ResourceFork::new(tmp_file.as_file()));
+            BufWriter::with_capacity(BLOCK_SIZE, ResourceFork::new(tmp_file.as_file()));
         resource_fork.seek(SeekFrom::Start(
             compressor_kind.blocks_start(block_count.into()),
         ))?;

@@ -1,8 +1,7 @@
+use crate::seq_queue;
 use crate::threads::{writer, BgWork, Context, Mode, WorkHandler};
-use crate::{
-    compressor::{self, Compressor},
-    seq_queue, BLOCK_SIZE,
-};
+use applesauce_core::compressor::{self, Compressor};
+use applesauce_core::BLOCK_SIZE;
 use std::io;
 use std::sync::Arc;
 

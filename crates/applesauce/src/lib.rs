@@ -11,11 +11,10 @@
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 compile_error!("applesauce only works on macos/ios");
 
-pub mod compressor;
 pub mod info;
 pub mod progress;
+pub use applesauce_core::compressor;
 
-mod decmpfs;
 mod rfork_storage;
 mod scan;
 mod seq_queue;
@@ -35,20 +34,10 @@ use std::path::Path;
 use std::{io, mem, ptr};
 use tracing::warn;
 
-macro_rules! cstr {
-    ($s:literal) => {{
-        // TODO: Check for nulls
-        // SAFETY: definitely null terminated, at worst terminated early
-        unsafe { CStr::from_bytes_with_nul_unchecked(concat!($s, "\0").as_bytes()) }
-    }};
-}
-
-use crate::compressor::Kind;
 use crate::progress::{Progress, SkipReason};
 use crate::threads::{BackgroundThreads, Mode};
-pub(crate) use cstr;
-
-const BLOCK_SIZE: usize = 0x10000;
+use applesauce_core::compressor::Kind;
+use applesauce_core::decmpfs;
 
 const fn c_char_bytes(chars: &[c_char]) -> &[u8] {
     assert!(mem::size_of::<c_char>() == mem::size_of::<u8>());
@@ -64,10 +53,6 @@ fn cstr_from_bytes_until_null(bytes: &[c_char]) -> Option<&CStr> {
 }
 
 const ZFS_SUBTYPE: u32 = u32::from_be_bytes(*b"ZFS\0");
-
-const fn num_blocks(size: u64) -> u64 {
-    (size + (BLOCK_SIZE as u64 - 1)) / (BLOCK_SIZE as u64)
-}
 
 #[tracing::instrument(level = "debug", skip_all)]
 fn check_compressible(path: &Path, metadata: &Metadata) -> Result<(), SkipReason> {
@@ -281,18 +266,11 @@ fn try_read_all<R: Read>(mut r: R, buf: &mut [u8]) -> io::Result<usize> {
     Ok(read_len)
 }
 
-#[must_use]
-const fn round_to_block_size(size: u64, block_size: u64) -> u64 {
-    match size % block_size {
-        0 => size,
-        r => size + (block_size - r),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::progress::{Progress, Task};
+    use applesauce_core::compressor;
     use std::{fs, iter};
     use tempfile::TempDir;
     use walkdir::WalkDir;

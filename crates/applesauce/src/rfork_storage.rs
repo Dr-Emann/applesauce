@@ -1,6 +1,7 @@
-use crate::compressor::Kind;
-use crate::decmpfs::Storage;
-use crate::{decmpfs, xattr, BLOCK_SIZE};
+use crate::xattr;
+use applesauce_core::compressor::Kind;
+use applesauce_core::decmpfs::{self, Storage};
+use applesauce_core::BLOCK_SIZE;
 use resource_fork::ResourceFork;
 use std::fs::File;
 use std::io;

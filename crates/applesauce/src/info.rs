@@ -1,4 +1,5 @@
-use crate::{decmpfs, round_to_block_size, xattr};
+use crate::xattr;
+use applesauce_core::{decmpfs, round_to_block_size};
 use std::ffi::CString;
 use std::io;
 use std::os::macos::fs::MetadataExt as _;
@@ -7,7 +8,7 @@ use std::os::unix::fs::MetadataExt as _;
 use std::path::Path;
 use walkdir::WalkDir;
 
-pub use decmpfs::CompressionType;
+pub use applesauce_core::decmpfs::CompressionType;
 
 pub struct DecmpfsInfo {
     pub compression_type: CompressionType,

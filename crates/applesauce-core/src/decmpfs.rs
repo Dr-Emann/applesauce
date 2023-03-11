@@ -9,7 +9,11 @@ pub const MAGIC: [u8; 4] = *b"fpmc";
 
 pub const ZLIB_BLOCK_TABLE_START: u64 = 0x104;
 
-pub const XATTR_NAME: &CStr = crate::cstr!("com.apple.decmpfs");
+pub const XATTR_NAME: &CStr = {
+    let bytes: &'static [u8] = b"com.apple.decmpfs\0";
+    // SAFETY: bytes are static, and null terminated, without internal nulls
+    unsafe { CStr::from_bytes_with_nul_unchecked(bytes) }
+};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Storage {
@@ -107,6 +111,7 @@ pub struct Value<'a> {
 
 const HEADER_LEN: usize = 16;
 
+#[allow(clippy::len_without_is_empty)]
 impl<'a> Value<'a> {
     pub fn from_data(data: &'a [u8]) -> Result<Self, DecodeError> {
         if data.len() < HEADER_LEN {

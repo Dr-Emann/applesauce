@@ -21,6 +21,7 @@ dependencies = [
 name = "applesauce"
 version = "0.1.5"
 dependencies = [
+ "applesauce-core",
  "crossbeam-channel",
  "flate2",
  "ignore",
@@ -47,6 +48,17 @@ dependencies = [
  "tracing",
  "tracing-chrome",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "applesauce-core"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "libc",
+ "lzfse-sys",
+ "memchr",
+ "tracing",
 ]
 
 [[package]]
