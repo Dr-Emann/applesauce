@@ -20,12 +20,14 @@ mod zlib;
 
 pub(crate) trait CompressorImpl {
     /// The offset to start data at, for the specified number of blocks
+    #[must_use]
     fn header_size(block_count: u64) -> u64;
 
     /// The extra size required to store `block_count` blocks, other than the data itself
     ///
     /// This defaults to `blocks_start`, but can be overridden if the compressor requires more space
     /// after the data as well
+    #[must_use]
     fn extra_size(block_count: u64) -> u64 {
         Self::header_size(block_count)
     }
