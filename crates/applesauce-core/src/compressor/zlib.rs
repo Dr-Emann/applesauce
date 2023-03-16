@@ -8,12 +8,12 @@ use std::{io, mem};
 pub struct Zlib;
 
 impl super::CompressorImpl for Zlib {
-    fn blocks_start(block_count: u64) -> u64 {
+    fn header_size(block_count: u64) -> u64 {
         ZLIB_BLOCK_TABLE_START + mem::size_of::<u32>() as u64 + block_count * BlockInfo::SIZE as u64
     }
 
     fn extra_size(block_count: u64) -> u64 {
-        Self::blocks_start(block_count) + u64::try_from(ZLIB_TRAILER.len()).unwrap()
+        Self::header_size(block_count) + u64::try_from(ZLIB_TRAILER.len()).unwrap()
     }
 
     fn compress(&mut self, dst: &mut [u8], src: &[u8], level: u32) -> io::Result<usize> {
@@ -139,7 +139,7 @@ impl super::CompressorImpl for Zlib {
 
         writer.write_all(&u32::to_le_bytes(block_count))?;
         let mut current_offset =
-            u32::try_from(Self::blocks_start(block_count.into()) - ZLIB_BLOCK_TABLE_START).unwrap();
+            u32::try_from(Self::header_size(block_count.into()) - ZLIB_BLOCK_TABLE_START).unwrap();
         for &size in block_sizes {
             let block_info = BlockInfo {
                 offset: current_offset,
@@ -157,7 +157,7 @@ impl super::CompressorImpl for Zlib {
         {
             debug_assert_eq!(
                 writer.stream_position()?,
-                Self::blocks_start(block_count.into())
+                Self::header_size(block_count.into())
             );
         }
         Ok(())
@@ -203,7 +203,7 @@ mod tests {
     fn finish() {
         let mut cursor = Cursor::new(Vec::<u8>::new());
         let block_sizes = &[10, 20, 30, 40, 10];
-        let blocks_start = Zlib::blocks_start(block_sizes.len() as u64);
+        let blocks_start = Zlib::header_size(block_sizes.len() as u64);
         let data_end = 110 + blocks_start as u32;
         cursor.set_position(data_end.into());
         // Ensure file is extended to size

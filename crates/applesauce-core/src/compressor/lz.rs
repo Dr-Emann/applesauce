@@ -29,7 +29,7 @@ impl<I: Impl> Lz<I> {
 }
 
 impl<I: Impl> CompressorImpl for Lz<I> {
-    fn blocks_start(block_count: u64) -> u64 {
+    fn header_size(block_count: u64) -> u64 {
         (block_count + 1) * mem::size_of::<u32>() as u64
     }
 
@@ -95,7 +95,7 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         reader.rewind()?;
         let block_count = crate::num_blocks(orig_file_size);
 
-        let blocks_start = u32::try_from(Self::blocks_start(block_count)).unwrap();
+        let blocks_start = u32::try_from(Self::header_size(block_count)).unwrap();
         let mut result = Vec::with_capacity(
             block_count
                 .try_into()
@@ -142,7 +142,7 @@ impl<I: Impl> CompressorImpl for Lz<I> {
 
     fn finish<W: io::Write + io::Seek>(mut writer: W, block_sizes: &[u32]) -> io::Result<()> {
         let block_count = u32::try_from(block_sizes.len()).unwrap();
-        let mut offset = u32::try_from(Self::blocks_start(block_count.into())).unwrap();
+        let mut offset = u32::try_from(Self::header_size(block_count.into())).unwrap();
 
         writer.rewind()?;
 
@@ -164,7 +164,7 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         {
             debug_assert_eq!(
                 writer.stream_position()?,
-                Self::blocks_start(block_count.into())
+                Self::header_size(block_count.into())
             );
         }
         Ok(())
@@ -197,7 +197,7 @@ mod tests {
     fn finish() {
         let mut cursor = Cursor::new(Vec::<u8>::new());
         let block_sizes = &[10, 20, 30, 40, 10];
-        let blocks_start = Lz::<FakeLzImpl>::blocks_start(block_sizes.len() as u64);
+        let blocks_start = Lz::<FakeLzImpl>::header_size(block_sizes.len() as u64);
         let data_end = 110 + blocks_start as u32;
         cursor.set_position(data_end.into());
         // Ensure file is extended to size

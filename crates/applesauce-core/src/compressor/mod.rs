@@ -20,9 +20,14 @@ mod zlib;
 
 pub(crate) trait CompressorImpl {
     /// The offset to start data at, for the specified number of blocks
-    fn blocks_start(block_count: u64) -> u64;
+    fn header_size(block_count: u64) -> u64;
+
+    /// The extra size required to store `block_count` blocks, other than the data itself
+    ///
+    /// This defaults to `blocks_start`, but can be overridden if the compressor requires more space
+    /// after the data as well
     fn extra_size(block_count: u64) -> u64 {
-        Self::blocks_start(block_count)
+        Self::header_size(block_count)
     }
 
     fn compress(&mut self, dst: &mut [u8], src: &[u8], level: u32) -> io::Result<usize>;
@@ -171,11 +176,11 @@ impl Kind {
     pub fn blocks_start(self, block_count: u64) -> u64 {
         match self {
             #[cfg(feature = "zlib")]
-            Kind::Zlib => Zlib::blocks_start(block_count),
+            Kind::Zlib => Zlib::header_size(block_count),
             #[cfg(feature = "lzvn")]
-            Kind::Lzvn => Lzvn::blocks_start(block_count),
+            Kind::Lzvn => Lzvn::header_size(block_count),
             #[cfg(feature = "lzfse")]
-            Kind::Lzfse => Lzfse::blocks_start(block_count),
+            Kind::Lzfse => Lzfse::header_size(block_count),
             #[allow(unreachable_patterns)]
             _ => panic!("Unsupported compression kind {self}"),
         }
