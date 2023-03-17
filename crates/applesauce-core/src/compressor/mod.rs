@@ -89,7 +89,7 @@ enum Data {
 impl Compressor {
     #[must_use]
     pub fn blocks_start(&self, block_count: u64) -> u64 {
-        self.kind().blocks_start(block_count)
+        self.kind().header_size(block_count)
     }
 
     pub fn compress(&mut self, dst: &mut [u8], src: &[u8], level: u32) -> io::Result<usize> {
@@ -175,7 +175,7 @@ impl Kind {
     }
 
     #[must_use]
-    pub fn blocks_start(self, block_count: u64) -> u64 {
+    pub fn header_size(self, block_count: u64) -> u64 {
         match self {
             #[cfg(feature = "zlib")]
             Kind::Zlib => Zlib::header_size(block_count),

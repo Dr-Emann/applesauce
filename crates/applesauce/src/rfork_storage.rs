@@ -7,6 +7,16 @@ use std::fs::File;
 use std::io;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 
+pub struct RForkOpener<'a>(pub &'a File);
+
+impl<'a> applesauce_core::writer::OpenResourceFork for RForkOpener<'a> {
+    type ResourceFork = ResourceFork<'a>;
+
+    fn open_resource_fork(self) -> io::Result<Self::ResourceFork> {
+        Ok(ResourceFork::new(self.0))
+    }
+}
+
 pub fn with_compressed_blocks<F, F2>(file: &File, f: F) -> io::Result<()>
 where
     F: FnOnce(Kind) -> F2,
