@@ -152,6 +152,8 @@ impl super::CompressorImpl for Zlib {
             })?;
         }
 
+        writer.flush()?;
+
         // This is logically a non-modifying operation, even if it takes &mut self, and can fail
         #[allow(clippy::debug_assert_with_mut_call)]
         {

@@ -159,6 +159,8 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         // Write the final offset
         writer.write_all(&u32::to_le_bytes(offset))?;
 
+        writer.flush()?;
+
         // This is logically a non-modifying operation, even if it takes &mut self, and can fail
         #[allow(clippy::debug_assert_with_mut_call)]
         {
