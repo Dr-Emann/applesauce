@@ -6,6 +6,7 @@ pub enum SkipReason {
     NotFile,
     AlreadyCompressed,
     NotCompressed,
+    EmptyFile,
     TooLarge(u64),
     ReadError(io::Error),
     ZfsFilesystem,
@@ -68,6 +69,7 @@ impl fmt::Display for SkipReason {
             SkipReason::ZfsFilesystem => write!(f, "ZFS filesystem (not supported)"),
             SkipReason::HasRequiredXattr => write!(f, "Compression xattrs already present"),
             SkipReason::FsNotSupported => write!(f, "Filesystem does not support compression"),
+            SkipReason::EmptyFile => write!(f, "Empty file"),
         }
     }
 }

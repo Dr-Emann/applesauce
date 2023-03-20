@@ -62,6 +62,9 @@ fn check_compressible(path: &Path, metadata: &Metadata) -> Result<(), SkipReason
     if metadata.st_flags() & libc::UF_COMPRESSED != 0 {
         return Err(SkipReason::AlreadyCompressed);
     }
+    if metadata.len() == 0 {
+        return Err(SkipReason::EmptyFile);
+    }
     if metadata.len() >= u64::from(u32::MAX) {
         return Err(SkipReason::TooLarge(metadata.len()));
     }

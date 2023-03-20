@@ -23,13 +23,18 @@ pub(crate) trait CompressorImpl {
     #[must_use]
     fn header_size(block_count: u64) -> u64;
 
+    #[must_use]
+    fn trailer_size() -> u64 {
+        0
+    }
+
     /// The extra size required to store `block_count` blocks, other than the data itself
     ///
     /// This defaults to `blocks_start`, but can be overridden if the compressor requires more space
     /// after the data as well
     #[must_use]
     fn extra_size(block_count: u64) -> u64 {
-        Self::header_size(block_count)
+        Self::header_size(block_count) + Self::trailer_size()
     }
 
     fn compress(&mut self, dst: &mut [u8], src: &[u8], level: u32) -> io::Result<usize>;
@@ -215,6 +220,18 @@ impl Kind {
             Kind::Lzfse => Lzfse::finish(writer, block_sizes),
             #[allow(unreachable_patterns)]
             _ => panic!("Unsupported compression kind {self}"),
+        }
+    }
+}
+
+impl Default for Kind {
+    fn default() -> Self {
+        if Self::Lzfse.supported() {
+            Self::Lzfse
+        } else if Self::Zlib.supported() {
+            Self::Zlib
+        } else {
+            Self::Lzvn
         }
     }
 }

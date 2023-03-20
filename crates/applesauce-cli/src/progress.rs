@@ -121,9 +121,10 @@ impl Progress for ProgressBars {
 
     fn file_skipped(&self, path: &Path, why: SkipReason) {
         let required_verbosity = match why {
-            SkipReason::NotFile | SkipReason::AlreadyCompressed | SkipReason::NotCompressed => {
-                Verbosity::Verbose
-            }
+            SkipReason::NotFile
+            | SkipReason::AlreadyCompressed
+            | SkipReason::NotCompressed
+            | SkipReason::EmptyFile => Verbosity::Verbose,
             SkipReason::TooLarge(_)
             | SkipReason::ReadError(_)
             | SkipReason::ZfsFilesystem

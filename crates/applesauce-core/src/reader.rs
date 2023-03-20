@@ -8,6 +8,14 @@ pub trait Open {
     fn open_resource_fork(self) -> io::Result<Self::ResourceFork>;
 }
 
+impl<R: Read + Seek, F: FnOnce() -> R> Open for F {
+    type ResourceFork = R;
+
+    fn open_resource_fork(self) -> io::Result<Self::ResourceFork> {
+        Ok(self())
+    }
+}
+
 enum State<R> {
     Xattr(Cursor<Vec<u8>>),
     ResourceFork {

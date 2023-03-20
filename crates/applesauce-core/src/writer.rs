@@ -9,6 +9,14 @@ pub trait Open {
     fn open_resource_fork(self) -> io::Result<Self::ResourceFork>;
 }
 
+impl<W: Write + Seek, F: FnOnce() -> W> Open for F {
+    type ResourceFork = W;
+
+    fn open_resource_fork(self) -> io::Result<Self::ResourceFork> {
+        Ok(self())
+    }
+}
+
 enum WriterState<O: Open> {
     // Just used as a transition state, should never be there at the end of the write
     Empty,
@@ -80,6 +88,7 @@ impl<O: Open> Writer<O> {
         let mut extra_data = Vec::new();
         let storage = match self.state {
             WriterState::SingleBlock { block, .. } => {
+                debug_assert!(!block.is_empty() || self.uncompressed_size == 0);
                 extra_data = block;
                 decmpfs::Storage::Xattr
             }
@@ -87,6 +96,12 @@ impl<O: Open> Writer<O> {
                 block_sizes,
                 resource_fork: data,
             } => {
+                if block_sizes.len() as u64 != crate::num_blocks(self.uncompressed_size) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Wrong number of blocks",
+                    ));
+                }
                 self.kind.finish(data, &block_sizes)?;
                 decmpfs::Storage::ResourceFork
             }

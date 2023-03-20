@@ -12,8 +12,8 @@ impl super::CompressorImpl for Zlib {
         ZLIB_BLOCK_TABLE_START + mem::size_of::<u32>() as u64 + block_count * BlockInfo::SIZE as u64
     }
 
-    fn extra_size(block_count: u64) -> u64 {
-        Self::header_size(block_count) + u64::try_from(ZLIB_TRAILER.len()).unwrap()
+    fn trailer_size() -> u64 {
+        u64::try_from(ZLIB_TRAILER.len()).unwrap()
     }
 
     fn compress(&mut self, dst: &mut [u8], src: &[u8], level: u32) -> io::Result<usize> {
