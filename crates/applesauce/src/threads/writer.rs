@@ -59,15 +59,26 @@ impl Handler {
         let block_span = tracing::debug_span!("write block");
 
         let mut total_compressed_size = 0;
+        let minimum_compression_ratio = match context.mode {
+            Mode::Compress {
+                minimum_compression_ratio,
+                ..
+            } => minimum_compression_ratio,
+            _ => unreachable!("write_blocks called in non-compress mode"),
+        };
+        let max_compressed_size = (context.orig_size as f64 * minimum_compression_ratio) as u64;
         for chunk in chunks {
             let chunk = chunk?;
 
             total_compressed_size += u64::try_from(chunk.block.len()).unwrap();
-            if total_compressed_size > context.orig_size {
+            if total_compressed_size > max_compressed_size {
                 context.progress.not_compressible_enough(&context.path);
                 return Err(io::Error::new(
                     io::ErrorKind::Other,
-                    "file grew when compressed",
+                    format!(
+                        "did not compress to at least {}% of original size",
+                        minimum_compression_ratio * 100.0
+                    ),
                 ));
             }
 

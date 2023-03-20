@@ -47,7 +47,7 @@ impl WorkHandler<WorkItem> for Handler {
         let compressor = self.compressors[item.kind as usize]
             .get_or_insert_with(|| item.kind.compressor().unwrap());
         let size = match item.context.mode {
-            Mode::Compress { kind, level } => {
+            Mode::Compress { kind, level, .. } => {
                 debug_assert_eq!(kind, item.kind);
                 compressor.compress(&mut self.buf, &item.data, level)
             }

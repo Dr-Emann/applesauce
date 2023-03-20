@@ -43,7 +43,11 @@ pub struct Context {
 
 #[derive(Debug, Copy, Clone)]
 pub enum Mode {
-    Compress { kind: compressor::Kind, level: u32 },
+    Compress {
+        kind: compressor::Kind,
+        minimum_compression_ratio: f64,
+        level: u32,
+    },
     DecompressManually,
     DecompressByReading,
 }

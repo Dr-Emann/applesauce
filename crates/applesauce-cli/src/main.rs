@@ -1,4 +1,5 @@
 use crate::progress::{ProgressBarWriter, ProgressBars, Verbosity};
+use applesauce::compressor::Kind;
 use applesauce::{compressor, info};
 use cfg_if::cfg_if;
 use clap::Parser;
@@ -88,6 +89,18 @@ struct Compress {
     )]
     level: u32,
 
+    /// The minimum compression ratio
+    ///
+    /// Files will be skipped if they compress to a larger size than this ratio
+    /// of the original size
+    ///
+    /// A value of 0.0 (or less) will skip all files
+    /// A value of 1.0 will only skip files which cannot be compressed at all
+    /// Values greater than 1.0 are valid, and will allow forcing compression to
+    /// be used even if it results in a larger file
+    #[arg(short = 'r', long, default_value_t = 0.95)]
+    minimum_compression_ratio: f64,
+
     /// The type of compression to use
     #[arg(short, long, value_enum, default_value_t = Compression::default())]
     compression: Compression,
@@ -102,7 +115,7 @@ struct Info {
     paths: Vec<PathBuf>,
 }
 
-#[derive(Debug, Copy, Clone, clap::ValueEnum)]
+#[derive(Debug, Copy, Clone, clap::ValueEnum, PartialEq, Eq)]
 enum Compression {
     #[cfg(feature = "lzfse")]
     Lzfse,
@@ -203,13 +216,21 @@ fn main() {
         Commands::Compress(Compress {
             paths,
             compression,
+            minimum_compression_ratio,
             level,
         }) => {
+            let kind: Kind = compression.into();
+
+            if kind != Kind::Zlib && level != 5 {
+                tracing::warn!("Compression level is ignored for non-zlib compression");
+            }
+
             {
                 let mut compressor = applesauce::FileCompressor::new();
                 compressor.recursive_compress(
                     paths.iter().map(Path::new),
-                    compression.into(),
+                    kind,
+                    minimum_compression_ratio,
                     level,
                     &progress_bars,
                 );
