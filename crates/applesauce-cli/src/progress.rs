@@ -8,6 +8,8 @@ use std::time::{Duration, Instant};
 
 // Delay until an individual progress bar will appear for a single file
 const DELAY: Duration = Duration::from_millis(100);
+// Minimum remaining ETA after `DELAY`, to avoid showing a progress bar that
+// will disappear almost immediately
 const MIN_ETA: Duration = Duration::from_secs(4);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
