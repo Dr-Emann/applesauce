@@ -1,15 +1,22 @@
 use crate::xattr;
 use applesauce_core::compressor::Kind;
-use applesauce_core::decmpfs::{self, Storage};
+use applesauce_core::decmpfs;
 use applesauce_core::BLOCK_SIZE;
 use resource_fork::ResourceFork;
 use std::fs::File;
 use std::io;
-use std::io::{BufReader, Read, Seek, SeekFrom};
 
 pub struct RForkOpener<'a>(pub &'a File);
 
-impl<'a> applesauce_core::writer::OpenResourceFork for RForkOpener<'a> {
+impl<'a> applesauce_core::writer::Open for RForkOpener<'a> {
+    type ResourceFork = ResourceFork<'a>;
+
+    fn open_resource_fork(self) -> io::Result<Self::ResourceFork> {
+        Ok(ResourceFork::new(self.0))
+    }
+}
+
+impl<'a> applesauce_core::reader::Open for RForkOpener<'a> {
     type ResourceFork = ResourceFork<'a>;
 
     fn open_resource_fork(self) -> io::Result<Self::ResourceFork> {
@@ -24,50 +31,17 @@ where
 {
     let decmpfs_data = xattr::read(file, decmpfs::XATTR_NAME)?
         .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "file is not compressed"))?;
-    let res = decmpfs::Value::from_data(&decmpfs_data)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    let (kind, storage) = res
-        .compression_type
-        .compression_storage()
-        .filter(|(kind, _)| kind.supported())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "unsupported compression kind"))?;
+    let mut reader = applesauce_core::reader::Reader::new(decmpfs_data, RForkOpener(file))?;
 
-    let mut per_block = f(kind);
-    match storage {
-        Storage::Xattr => per_block(res.extra_data)?,
-        Storage::ResourceFork => {
-            let mut rfork = BufReader::new(ResourceFork::new(file));
-            let mut buf = Vec::with_capacity(BLOCK_SIZE);
-            let block_info = kind.read_block_info(&mut rfork, res.uncompressed_size)?;
-            let mut last_offset: Option<u32> = None;
-            for block in block_info {
-                buf.clear();
-                match last_offset {
-                    Some(o) => {
-                        let diff = i64::from(block.offset) - i64::from(o);
-                        rfork.seek_relative(diff)?;
-                    }
-                    None => {
-                        rfork.seek(SeekFrom::Start(block.offset.into()))?;
-                    }
-                }
-                let bytes_read = rfork
-                    .by_ref()
-                    .take(block.compressed_size.into())
-                    .read_to_end(&mut buf)?;
-                if bytes_read < block.compressed_size as usize {
-                    return Err(io::ErrorKind::UnexpectedEof.into());
-                }
-
-                last_offset = Some(
-                    block
-                        .offset
-                        .checked_add(block.compressed_size)
-                        .ok_or(io::ErrorKind::InvalidData)?,
-                );
-                per_block(&buf)?;
-            }
+    let mut per_block = f(reader.compression_kind());
+    let mut buf = Vec::with_capacity(BLOCK_SIZE);
+    loop {
+        buf.clear();
+        let has_block = reader.read_block_into(&mut buf)?;
+        if !has_block {
+            break;
         }
+        per_block(&buf)?;
     }
 
     Ok(())

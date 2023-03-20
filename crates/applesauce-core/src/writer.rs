@@ -3,38 +3,34 @@ use crate::{compressor, decmpfs};
 use std::io::{Seek, SeekFrom, Write};
 use std::{io, mem};
 
-pub trait OpenResourceFork {
+pub trait Open {
     type ResourceFork: Write + Seek;
 
     fn open_resource_fork(self) -> io::Result<Self::ResourceFork>;
 }
 
-enum WriterState<OpenRFork: OpenResourceFork> {
+enum WriterState<O: Open> {
     // Just used as a transition state, should never be there at the end of the write
     Empty,
     SingleBlock {
         // We still need to keep this openable, in case the block is too large to fit in an xattr
-        open: OpenRFork,
+        open: O,
         block: Vec<u8>,
     },
     MultipleBlocks {
         block_sizes: Vec<u32>,
-        resource_fork: OpenRFork::ResourceFork,
+        resource_fork: O::ResourceFork,
     },
 }
 
-pub struct Writer<OpenRFork: OpenResourceFork> {
+pub struct Writer<O: Open> {
     kind: compressor::Kind,
     uncompressed_size: u64,
-    state: WriterState<OpenRFork>,
+    state: WriterState<O>,
 }
 
-impl<OpenRFork: OpenResourceFork> Writer<OpenRFork> {
-    pub fn new(
-        kind: compressor::Kind,
-        uncompressed_size: u64,
-        open: OpenRFork,
-    ) -> io::Result<Self> {
+impl<O: Open> Writer<O> {
+    pub fn new(kind: compressor::Kind, uncompressed_size: u64, open: O) -> io::Result<Self> {
         let block_count = crate::num_blocks(uncompressed_size);
         let state = if block_count > 1 {
             let mut resource_fork = open.open_resource_fork()?;

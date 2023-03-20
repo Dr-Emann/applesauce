@@ -3,6 +3,7 @@ use std::ffi::CStr;
 use std::io::Write;
 use std::{fmt, io};
 
+pub const HEADER_LEN: usize = 16;
 pub const MAX_XATTR_SIZE: usize = 3802;
 pub const MAX_XATTR_DATA_SIZE: usize = MAX_XATTR_SIZE - HEADER_LEN;
 pub const MAGIC: [u8; 4] = *b"fpmc";
@@ -108,8 +109,6 @@ pub struct Value<'a> {
     pub uncompressed_size: u64,
     pub extra_data: &'a [u8],
 }
-
-const HEADER_LEN: usize = 16;
 
 #[allow(clippy::len_without_is_empty)]
 impl<'a> Value<'a> {

@@ -3,6 +3,7 @@ use std::io::Read;
 
 pub mod compressor;
 pub mod decmpfs;
+pub mod reader;
 pub mod writer;
 
 pub const BLOCK_SIZE: usize = 0x10000;
