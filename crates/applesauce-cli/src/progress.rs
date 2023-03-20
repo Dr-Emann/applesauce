@@ -7,7 +7,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 // Delay until an individual progress bar will appear for a single file
-const DELAY: Duration = Duration::from_millis(700);
+const DELAY: Duration = Duration::from_millis(100);
+const MIN_ETA: Duration = Duration::from_secs(4);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Verbosity {
@@ -103,7 +104,7 @@ impl ProgressWithTotal {
             time_to_attach,
         } = *state
         {
-            if time_to_attach <= now {
+            if time_to_attach <= now && self.single.eta() > MIN_ETA {
                 bars.insert(0, self.single.clone());
                 *state = State::Attached;
             }
