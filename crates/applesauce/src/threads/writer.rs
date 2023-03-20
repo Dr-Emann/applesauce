@@ -1,10 +1,10 @@
-use crate::rfork_storage::RForkOpener;
 use crate::threads::{BgWork, Context, Mode, WorkHandler};
 use crate::{reset_times, seq_queue, set_flags, xattr};
 use applesauce_core::compressor::Kind;
 use applesauce_core::decmpfs;
+use resource_fork::ResourceFork;
 use std::fs::{File, Metadata};
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::os::fd::AsRawFd;
 use std::os::macos::fs::MetadataExt;
 use std::path::Path;
@@ -53,7 +53,7 @@ impl Handler {
     fn write_blocks(
         &mut self,
         context: &Context,
-        writer: &mut applesauce_core::writer::Writer<RForkOpener>,
+        writer: &mut applesauce_core::writer::Writer<impl applesauce_core::writer::Open>,
         chunks: seq_queue::Receiver<io::Result<Chunk>>,
     ) -> io::Result<()> {
         let block_span = tracing::debug_span!("write block");
@@ -86,11 +86,10 @@ impl Handler {
         let tmp_file = tmp_file_for(&item.context.path)?;
         copy_xattrs(&item.file, tmp_file.as_file())?;
 
-        let mut writer = applesauce_core::writer::Writer::new(
-            compressor_kind,
-            uncompressed_file_size,
-            RForkOpener(tmp_file.as_file()),
-        )?;
+        let mut writer =
+            applesauce_core::writer::Writer::new(compressor_kind, uncompressed_file_size, || {
+                BufWriter::new(ResourceFork::new(tmp_file.as_file()))
+            })?;
 
         self.write_blocks(&item.context, &mut writer, item.blocks)?;
 
