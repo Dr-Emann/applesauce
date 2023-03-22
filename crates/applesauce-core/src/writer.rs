@@ -104,7 +104,7 @@ impl<O: Open> Writer<O> {
             }
             WriterState::MultipleBlocks {
                 block_sizes,
-                resource_fork: data,
+                resource_fork,
             } => {
                 if block_sizes.len() as u64 != crate::num_blocks(self.uncompressed_size) {
                     return Err(io::Error::new(
@@ -112,7 +112,7 @@ impl<O: Open> Writer<O> {
                         "Wrong number of blocks",
                     ));
                 }
-                self.kind.finish(data, &block_sizes)?;
+                self.kind.finish(resource_fork, &block_sizes)?;
                 decmpfs::Storage::ResourceFork
             }
             WriterState::Empty => unreachable!(),
