@@ -155,21 +155,6 @@ impl XattrSource for File {
     }
 }
 
-#[allow(dead_code)]
-// TODO: Remove if needed, but we'll probably need this for
-//       uncompress
-pub fn remove<F: XattrSource + ?Sized>(f: &F, xattr_name: &CStr) -> io::Result<()> {
-    // SAFETY: fd is valid, xattr_name is valid, and null terminated
-    let rc = unsafe { f.remove_xattr(xattr_name) };
-    if rc == -1 {
-        let last_error = io::Error::last_os_error();
-        if last_error.raw_os_error() != Some(libc::ENOATTR) {
-            return Err(last_error);
-        };
-    }
-    Ok(())
-}
-
 pub fn len<F: XattrSource + ?Sized>(f: &F, xattr_name: &CStr) -> io::Result<Option<usize>> {
     // SAFETY:
     // f is valid, xattr_name is a valid pointer and is null terminated
