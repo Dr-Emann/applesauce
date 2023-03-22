@@ -282,6 +282,7 @@ mod tests {
     use super::*;
     use crate::progress::{Progress, Task};
     use applesauce_core::compressor;
+    use std::os::unix::fs::symlink;
     use std::{fs, iter};
     use tempfile::TempDir;
     use walkdir::WalkDir;
@@ -344,7 +345,12 @@ mod tests {
     }
 
     fn compress_folder(compressor_kind: compressor::Kind, dir: &Path) {
+        let mut uncompressed_file = tempfile::NamedTempFile::new().unwrap();
+        uncompressed_file.write_all(&[0; 8 * 1024]).unwrap();
+        uncompressed_file.flush().unwrap();
         populate_dir(dir);
+        symlink(uncompressed_file.path(), dir.join("symlink")).unwrap();
+
         let old_hash = recursive_hash(dir);
 
         let mut fc = FileCompressor::new();
@@ -357,6 +363,13 @@ mod tests {
         let info = info::get_recursive(dir).unwrap();
         // These are very compressible files
         assert!(info.compression_savings_fraction() > 0.5);
+
+        // Expect symlinked file to not be compressed
+        check_compressible(
+            uncompressed_file.path(),
+            &uncompressed_file.as_file().metadata().unwrap(),
+        )
+        .unwrap();
 
         // Now Decompress
         let mut fc = FileCompressor::new();
