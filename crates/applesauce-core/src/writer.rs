@@ -66,10 +66,14 @@ impl<O: Open> Writer<O> {
 
         match &mut self.state {
             WriterState::SingleBlock { block, .. } => {
-                assert!(block.is_empty());
-                block.extend_from_slice(new_block);
-                if block.len() > decmpfs::MAX_XATTR_DATA_SIZE {
-                    self.force_move_to_resource_fork()?;
+                assert!(
+                    block.is_empty(),
+                    "adding multiple blocks to a single-block writer"
+                );
+                if new_block.len() > decmpfs::MAX_XATTR_DATA_SIZE {
+                    self.force_move_to_resource_fork(new_block)?;
+                } else {
+                    block.extend_from_slice(new_block);
                 }
             }
             WriterState::MultipleBlocks {
@@ -127,18 +131,20 @@ impl<O: Open> Writer<O> {
 
     // Only called on single-block files, to convert to multiple blocks, even with a single block
     // because the block is too large to fit in an xattr
-    fn force_move_to_resource_fork(&mut self) -> io::Result<()> {
+    fn force_move_to_resource_fork(&mut self, new_block: &[u8]) -> io::Result<()> {
         match mem::replace(&mut self.state, WriterState::Empty) {
             WriterState::SingleBlock { open, block } => {
+                debug_assert!(block.is_empty());
+
                 let mut resource_fork = open.open_resource_fork()?;
                 resource_fork.seek(SeekFrom::Start(
                     self.kind
                         .header_size(crate::num_blocks(self.uncompressed_size)),
                 ))?;
-                resource_fork.write_all(&block)?;
+                resource_fork.write_all(new_block)?;
 
                 self.state = WriterState::MultipleBlocks {
-                    block_sizes: vec![block.len() as u32],
+                    block_sizes: vec![new_block.len() as u32],
                     resource_fork,
                 };
             }
