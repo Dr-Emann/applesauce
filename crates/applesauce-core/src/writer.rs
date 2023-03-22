@@ -61,13 +61,13 @@ impl<O: Open> Writer<O> {
         })
     }
 
-    pub fn add_block(&mut self, new_block: Vec<u8>) -> io::Result<()> {
+    pub fn add_block(&mut self, new_block: &[u8]) -> io::Result<()> {
         assert!(new_block.len() as u64 <= u32::MAX as u64);
 
         match &mut self.state {
             WriterState::SingleBlock { block, .. } => {
                 assert!(block.is_empty());
-                *block = new_block;
+                block.extend_from_slice(new_block);
                 if block.len() > decmpfs::MAX_XATTR_DATA_SIZE {
                     self.force_move_to_resource_fork()?;
                 }
@@ -76,8 +76,14 @@ impl<O: Open> Writer<O> {
                 block_sizes,
                 resource_fork,
             } => {
+                if block_sizes.len() + 1 >= u32::MAX as usize {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "too many blocks",
+                    ));
+                }
                 block_sizes.push(new_block.len() as u32);
-                resource_fork.write_all(&new_block)?;
+                resource_fork.write_all(new_block)?;
             }
             WriterState::Empty => unreachable!(),
         };

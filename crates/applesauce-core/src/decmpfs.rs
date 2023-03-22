@@ -103,6 +103,15 @@ impl fmt::Display for DecodeError {
 
 impl std::error::Error for DecodeError {}
 
+impl From<DecodeError> for io::Error {
+    fn from(err: DecodeError) -> Self {
+        match err {
+            DecodeError::TooSmall => io::Error::new(io::ErrorKind::UnexpectedEof, err),
+            DecodeError::BadMagic => io::Error::new(io::ErrorKind::InvalidData, err),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct Value<'a> {
     pub compression_type: CompressionType,

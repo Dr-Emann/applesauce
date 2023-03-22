@@ -85,7 +85,7 @@ impl Handler {
             let Chunk { block, orig_size } = chunk;
             let _enter = block_span.enter();
 
-            writer.add_block(block)?;
+            writer.add_block(&block)?;
             context.progress.increment(orig_size);
         }
         Ok(())

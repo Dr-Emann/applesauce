@@ -27,7 +27,7 @@ fn small_block_store_inplace() {
     let uncompressed_size = 10;
     let compressed_block = vec![1, 2, 3];
     let mut writer = Writer::new(Kind::default(), uncompressed_size, never_called_open).unwrap();
-    writer.add_block(compressed_block.clone()).unwrap();
+    writer.add_block(&compressed_block).unwrap();
 
     let mut decmpfs_data = Vec::new();
     writer.finish_decmpfs_data(&mut decmpfs_data).unwrap();
@@ -56,7 +56,7 @@ fn large_single_block() {
         .unwrap()
     };
 
-    writer.add_block(compressed_block.clone()).unwrap();
+    writer.add_block(&compressed_block).unwrap();
 
     let mut decmpfs_data = Vec::new();
     writer.finish_decmpfs_data(&mut decmpfs_data).unwrap();
@@ -97,8 +97,8 @@ fn multiple_small_blocks() {
         .unwrap()
     };
 
-    writer.add_block(compressed_block.clone()).unwrap();
-    writer.add_block(compressed_block.clone()).unwrap();
+    writer.add_block(&compressed_block).unwrap();
+    writer.add_block(&compressed_block).unwrap();
 
     let mut decmpfs_data = Vec::new();
     writer.finish_decmpfs_data(&mut decmpfs_data).unwrap();

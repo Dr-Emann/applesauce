@@ -16,6 +16,7 @@ impl<R: Read + Seek, F: FnOnce() -> R> Open for F {
     }
 }
 
+#[derive(Debug)]
 enum State<R> {
     Xattr(Cursor<Vec<u8>>),
     ResourceFork {
@@ -26,18 +27,18 @@ enum State<R> {
     },
 }
 
+#[derive(Debug)]
 pub struct Reader<R> {
     kind: compressor::Kind,
     state: State<R>,
 }
 
 impl<R: Read + Seek> Reader<R> {
-    pub fn new<O>(decmpfs_data: Vec<u8>, open: O) -> io::Result<Self>
+    pub fn new<O>(decmpfs_data: &[u8], open: O) -> io::Result<Self>
     where
         O: Open<ResourceFork = R>,
     {
-        let decmpfs_value = decmpfs::Value::from_data(&decmpfs_data)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let decmpfs_value = decmpfs::Value::from_data(decmpfs_data)?;
         let (kind, storage) = decmpfs_value
             .compression_type
             .compression_storage()
@@ -49,11 +50,7 @@ impl<R: Read + Seek> Reader<R> {
                 )
             })?;
         let state = match storage {
-            Storage::Xattr => {
-                let mut cursor = Cursor::new(decmpfs_data);
-                cursor.set_position(decmpfs::HEADER_LEN as u64);
-                State::Xattr(cursor)
-            }
+            Storage::Xattr => State::Xattr(Cursor::new(decmpfs_value.extra_data.to_vec())),
             Storage::ResourceFork => {
                 let mut rfork = BufReader::new(open.open_resource_fork()?);
                 let mut blocks_info =

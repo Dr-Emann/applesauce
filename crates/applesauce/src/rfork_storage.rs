@@ -14,7 +14,7 @@ where
     let decmpfs_data = xattr::read(file, decmpfs::XATTR_NAME)?
         .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "file is not compressed"))?;
     let mut reader =
-        applesauce_core::reader::Reader::new(decmpfs_data, || ResourceFork::new(file))?;
+        applesauce_core::reader::Reader::new(&decmpfs_data, || ResourceFork::new(file))?;
 
     let mut per_block = f(reader.compression_kind());
     let mut buf = Vec::with_capacity(BLOCK_SIZE);
