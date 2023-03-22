@@ -134,6 +134,9 @@ impl Handler {
         for chunk in item.blocks {
             let chunk = chunk?;
             tmp_file.write_all(&chunk.block)?;
+            // Increment progress by the uncompressed size of the block,
+            // not the "original" (compressed) size
+            item.context.progress.increment(chunk.block.len() as u64);
         }
 
         copy_metadata(&item.file, tmp_file.as_file())?;
