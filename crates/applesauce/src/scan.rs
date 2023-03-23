@@ -1,7 +1,6 @@
-use crate::progress::{Progress, SkipReason};
-use crate::threads::Mode;
+use crate::progress::Progress;
 use ignore::WalkState;
-use std::fs::Metadata;
+use std::fs::FileType;
 use std::path::{Path, PathBuf};
 
 pub struct Walker<'a, P> {
@@ -27,24 +26,21 @@ impl<'a, P: Progress + Send + Sync> Walker<'a, P> {
         }
     }
 
-    pub fn run(self, mode: Mode, f: impl Fn(PathBuf, Metadata) + Send + Sync) {
+    pub fn run(self, f: impl Fn(FileType, PathBuf) + Send + Sync) {
         self.paths.run(|| {
             Box::new(|entry| {
-                handle_entry(entry, mode, self.progress, &f);
+                handle_entry(entry, self.progress, &f);
                 WalkState::Continue
             })
         })
     }
 }
 
-fn handle_entry<F>(
+fn handle_entry(
     entry: Result<ignore::DirEntry, ignore::Error>,
-    mode: Mode,
     progress: &impl Progress,
-    f: &F,
-) where
-    F: Fn(PathBuf, Metadata),
-{
+    f: &impl Fn(FileType, PathBuf),
+) {
     let entry = match entry {
         Ok(entry) => entry,
         Err(e) => {
@@ -52,8 +48,6 @@ fn handle_entry<F>(
             return;
         }
     };
-    let path = entry.path();
-
     let file_type = entry
         .file_type()
         .expect("Only stdin should have no file_type");
@@ -62,22 +56,5 @@ fn handle_entry<F>(
         return;
     }
 
-    let metadata = match entry.metadata() {
-        Ok(metadata) => metadata,
-        Err(e) => {
-            progress.file_skipped(path, SkipReason::ReadError(e.into_io_error().unwrap()));
-            return;
-        }
-    };
-    let res = if mode.is_compressing() {
-        crate::check_compressible(path, &metadata)
-    } else {
-        crate::check_decompressible(&metadata)
-    };
-    if let Err(e) = res {
-        progress.file_skipped(path, e);
-        return;
-    }
-
-    f(entry.into_path(), metadata);
+    f(file_type, entry.into_path());
 }

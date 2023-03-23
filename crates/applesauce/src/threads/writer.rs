@@ -59,7 +59,7 @@ impl Handler {
         let block_span = tracing::debug_span!("write block");
 
         let mut total_compressed_size = 0;
-        let minimum_compression_ratio = match context.mode {
+        let minimum_compression_ratio = match context.operation.mode {
             Mode::Compress {
                 minimum_compression_ratio,
                 ..
@@ -159,7 +159,7 @@ impl WorkHandler<WorkItem> for Handler {
         let context = Arc::clone(&item.context);
         let _entered = tracing::info_span!("writing file", path=%context.path.display()).entered();
 
-        let res = match context.mode {
+        let res = match context.operation.mode {
             Mode::Compress { kind, .. } => self.write_compressed_file(item, kind),
             Mode::DecompressManually | Mode::DecompressByReading => {
                 self.write_uncompressed_file(item)
@@ -167,7 +167,7 @@ impl WorkHandler<WorkItem> for Handler {
         };
 
         if res.is_ok() {
-            let compressing = context.mode.is_compressing();
+            let compressing = context.operation.mode.is_compressing();
             let prefix = if compressing { "" } else { "de" };
             tracing::info!("Successfully {prefix}compressed {}", context.path.display());
         }

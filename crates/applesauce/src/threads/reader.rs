@@ -92,7 +92,7 @@ impl Handler {
         expected_len: u64,
         tx: &seq_queue::Sender<io::Result<writer::Chunk>>,
     ) -> io::Result<()> {
-        match context.mode {
+        match context.operation.mode {
             Mode::Compress { kind, .. } => {
                 let compressor = self.compressor.clone();
                 self.with_file_chunks(file, expected_len, tx, |slot, data| {

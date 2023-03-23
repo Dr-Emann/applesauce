@@ -22,22 +22,19 @@ mod threads;
 mod xattr;
 
 use libc::c_char;
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 use std::fs::{File, Metadata};
 use std::io::prelude::*;
 use std::mem::MaybeUninit;
-use std::os::macos::fs::MetadataExt as _;
-use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt as _;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::{io, mem, ptr};
 use tracing::warn;
 
-use crate::progress::{Progress, SkipReason};
+use crate::progress::Progress;
 use crate::threads::{BackgroundThreads, Mode};
 use applesauce_core::compressor::Kind;
-use applesauce_core::decmpfs;
 
 const fn c_char_bytes(chars: &[c_char]) -> &[u8] {
     assert!(mem::size_of::<c_char>() == mem::size_of::<u8>());
@@ -50,73 +47,6 @@ fn cstr_from_bytes_until_null(bytes: &[c_char]) -> Option<&CStr> {
     let bytes = c_char_bytes(bytes);
     let pos = memchr::memchr(0, bytes)?;
     CStr::from_bytes_with_nul(&bytes[..=pos]).ok()
-}
-
-const ZFS_SUBTYPE: u32 = u32::from_be_bytes(*b"ZFS\0");
-
-#[tracing::instrument(level = "debug", skip_all)]
-fn check_compressible(path: &Path, metadata: &Metadata) -> Result<(), SkipReason> {
-    if !metadata.is_file() {
-        return Err(SkipReason::NotFile);
-    }
-    if metadata.st_flags() & libc::UF_COMPRESSED != 0 {
-        return Err(SkipReason::AlreadyCompressed);
-    }
-    if metadata.len() == 0 {
-        return Err(SkipReason::EmptyFile);
-    }
-    if metadata.len() >= u64::from(u32::MAX) {
-        return Err(SkipReason::TooLarge(metadata.len()));
-    }
-
-    // TODO: Try a local buffer for non-alloc fast path
-    let path = match CString::new(path.as_os_str().as_bytes()) {
-        Ok(path) => path,
-        Err(e) => return Err(SkipReason::ReadError(e.into())),
-    };
-
-    let mut statfs_buf = MaybeUninit::<libc::statfs>::uninit();
-    // SAFETY: path is a valid pointer, and null terminated, statfs_buf is a valid ptr, and is used as an out ptr
-    let rc = unsafe { libc::statfs(path.as_ptr(), statfs_buf.as_mut_ptr()) };
-    if rc != 0 {
-        return Err(SkipReason::ReadError(io::Error::last_os_error()));
-    }
-    // SAFETY: if statfs returned non-zero, we returned already, it should have filled in statfs_buf
-    let statfs_buf = unsafe { statfs_buf.assume_init_ref() };
-
-    // TODO: let is_apfs = statfs_buf.f_fstypename.starts_with(APFS_CHARS);
-    let is_zfs = statfs_buf.f_fssubtype == ZFS_SUBTYPE;
-
-    if is_zfs {
-        // ZFS doesn't do HFS/decmpfs compression. It may pretend to, but in
-        // that case it will *de*compress the data before committing it. We
-        // won't play that game, wasting cycles and rewriting data for nothing.
-        return Err(SkipReason::ZfsFilesystem);
-    }
-
-    if xattr::is_present(&path, resource_fork::XATTR_NAME)?
-        || xattr::is_present(&path, decmpfs::XATTR_NAME)?
-    {
-        return Err(SkipReason::HasRequiredXattr);
-    }
-
-    let root_path = cstr_from_bytes_until_null(&statfs_buf.f_mntonname)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "mount name invalid"))?;
-    if !vol_supports_compression_cap(root_path)? {
-        return Err(SkipReason::FsNotSupported);
-    }
-    Ok(())
-}
-
-#[tracing::instrument(level = "debug", skip_all)]
-fn check_decompressible(metadata: &Metadata) -> Result<(), SkipReason> {
-    if !metadata.is_file() {
-        return Err(SkipReason::NotFile);
-    }
-    if metadata.st_flags() & libc::UF_COMPRESSED == 0 {
-        return Err(SkipReason::NotCompressed);
-    }
-    Ok(())
 }
 
 fn vol_supports_compression_cap(mnt_root: &CStr) -> io::Result<bool> {
@@ -282,6 +212,7 @@ mod tests {
     use super::*;
     use crate::progress::{Progress, Task};
     use applesauce_core::compressor;
+    use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::symlink;
     use std::{fs, iter};
     use tempfile::TempDir;
@@ -365,11 +296,15 @@ mod tests {
         assert!(info.compression_savings_fraction() > 0.5);
 
         // Expect symlinked file to not be compressed
-        check_compressible(
-            uncompressed_file.path(),
-            &uncompressed_file.as_file().metadata().unwrap(),
-        )
-        .unwrap();
+        assert!(matches!(
+            info::get_file_info(
+                uncompressed_file.path(),
+                &uncompressed_file.as_file().metadata().unwrap()
+            )
+            .compression_state,
+            info::FileCompressionState::Compressible,
+        ));
+        assert!(dir.join("symlink").is_symlink());
 
         // Now Decompress
         let mut fc = FileCompressor::new();
