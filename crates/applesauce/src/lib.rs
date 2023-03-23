@@ -29,9 +29,11 @@ use std::mem::MaybeUninit;
 use std::os::unix::fs::MetadataExt as _;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
+use std::sync::atomic::AtomicU64;
 use std::{io, mem, ptr};
 use tracing::warn;
 
+use crate::info::{FileCompressionState, FileInfo};
 use crate::progress::Progress;
 use crate::threads::{BackgroundThreads, Mode};
 use applesauce_core::compressor::Kind;
@@ -125,6 +127,80 @@ fn set_flags(file: &File, flags: libc::c_uint) -> io::Result<()> {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct Stats {
+    /// Total number of files scanned
+    pub files: AtomicU64,
+    /// Total of all file sizes (uncompressed)
+    pub total_file_sizes: AtomicU64,
+
+    pub compressed_size_start: AtomicU64,
+    /// Total of all file sizes (after compression) after performing this operation
+    pub compressed_size_final: AtomicU64,
+    /// Number of files that were compressed before performing this operation
+    pub compressed_file_count_start: AtomicU64,
+    /// Number of files that were compressed after performing this operation
+    pub compressed_file_count_final: AtomicU64,
+
+    /// Number of files that were incompressible (only present when compressing)
+    pub incompressible_file_count: AtomicU64,
+}
+
+impl Stats {
+    fn add_start_file(&self, metadata: &Metadata, file_info: &FileInfo) {
+        self.files
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.total_file_sizes
+            .fetch_add(metadata.len(), std::sync::atomic::Ordering::Relaxed);
+        self.compressed_size_start
+            .fetch_add(file_info.on_disk_size, std::sync::atomic::Ordering::Relaxed);
+        match file_info.compression_state {
+            FileCompressionState::Compressed => {
+                self.compressed_file_count_start
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            FileCompressionState::Compressible => {}
+            FileCompressionState::Incompressible(_) => {
+                self.incompressible_file_count
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+    }
+
+    fn add_end_file(&self, _metadata: &Metadata, file_info: &FileInfo) {
+        self.compressed_size_final
+            .fetch_add(file_info.on_disk_size, std::sync::atomic::Ordering::Relaxed);
+        if let FileCompressionState::Compressed = file_info.compression_state {
+            self.compressed_file_count_final
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    #[must_use]
+    pub fn compression_savings(&self) -> f64 {
+        let total_file_sizes = self
+            .total_file_sizes
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let compressed_size = self
+            .compressed_size_final
+            .load(std::sync::atomic::Ordering::Relaxed);
+        1.0 - (compressed_size as f64 / total_file_sizes as f64)
+    }
+
+    #[must_use]
+    pub fn compression_change_portion(&self) -> f64 {
+        let compressed_size_start = self
+            .compressed_size_start
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let compressed_size_final = self
+            .compressed_size_final
+            .load(std::sync::atomic::Ordering::Relaxed);
+        // This is reversed because we're looking at the change in compression:
+        // we want a smaller final size to be a positive change in compression
+        (compressed_size_start as f64 - compressed_size_final as f64) / compressed_size_start as f64
+    }
+}
+
 #[derive(Default)]
 pub struct FileCompressor {
     bg_threads: BackgroundThreads,
@@ -144,7 +220,8 @@ impl FileCompressor {
         minimum_compression_ratio: f64,
         level: u32,
         progress: &P,
-    ) where
+    ) -> Stats
+    where
         P: Progress + Send + Sync,
         P::Task: Send + Sync + 'static,
     {
@@ -156,7 +233,7 @@ impl FileCompressor {
             },
             paths,
             progress,
-        );
+        )
     }
 
     #[tracing::instrument(skip_all)]
@@ -165,7 +242,8 @@ impl FileCompressor {
         paths: impl IntoIterator<Item = &'a Path>,
         manual: bool,
         progress: &P,
-    ) where
+    ) -> Stats
+    where
         P: Progress + Send + Sync,
         P::Task: Send + Sync + 'static,
     {
@@ -174,7 +252,7 @@ impl FileCompressor {
         } else {
             Mode::DecompressByReading
         };
-        self.bg_threads.scan(mode, paths, progress);
+        self.bg_threads.scan(mode, paths, progress)
     }
 }
 

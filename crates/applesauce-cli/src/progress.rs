@@ -6,11 +6,16 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-// Delay until an individual progress bar will appear for a single file
+/// Initial delay to wait before checking the expected remaining time
+///
+/// See also [`MIN_ETA`]
 const DELAY: Duration = Duration::from_millis(100);
-// Minimum remaining ETA after `DELAY`, to avoid showing a progress bar that
-// will disappear almost immediately
-const MIN_ETA: Duration = Duration::from_secs(4);
+
+/// Minimum expected remaining time to attach the progress bar
+///
+/// This is to avoid flickering when the progress bar is attached and
+/// immediately finishes
+const MIN_ETA: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Verbosity {
@@ -106,9 +111,15 @@ impl ProgressWithTotal {
             time_to_attach,
         } = *state
         {
-            if time_to_attach <= now && self.single.eta() > MIN_ETA {
-                bars.insert(0, self.single.clone());
-                *state = State::Attached;
+            let pb = &self.single;
+            if time_to_attach <= now {
+                let length = pb.length().unwrap_or(1);
+                let remaining = length as f64 / pb.position() as f64;
+                let expected_remaining = pb.elapsed().as_secs_f64() * remaining;
+                if expected_remaining > MIN_ETA.as_secs_f64() {
+                    bars.insert(0, pb.clone());
+                    *state = State::Attached;
+                }
             }
         }
     }
@@ -174,7 +185,7 @@ impl Task for ProgressWithTotal {
     }
 
     fn not_compressible_enough(&self, path: &Path) {
-        if self.verbosity >= Verbosity::Normal {
+        if self.verbosity >= Verbosity::Verbose {
             let message = format!("{}: Not compressible enough, file grew", path.display());
             self.total.println(message);
         }

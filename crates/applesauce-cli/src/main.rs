@@ -1,12 +1,13 @@
 use crate::progress::{ProgressBarWriter, ProgressBars, Verbosity};
 use applesauce::compressor::Kind;
-use applesauce::{compressor, info};
+use applesauce::{compressor, info, Stats};
 use cfg_if::cfg_if;
 use clap::Parser;
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{BufWriter, LineWriter};
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use std::{fmt, io};
 use tracing::metadata::LevelFilter;
@@ -180,6 +181,7 @@ fn chrome_tracing_file(path: Option<&Path>) -> Option<impl io::Write> {
 
 fn main() {
     let cli = Cli::parse();
+    let verbosity = cli.verbosity();
 
     let mut _chrome_guard = None;
     let chrome_file = chrome_tracing_file(cli.chrome_tracing.as_deref());
@@ -225,30 +227,32 @@ fn main() {
                 tracing::warn!("Compression level is ignored for non-zlib compression");
             }
 
-            {
-                let mut compressor = applesauce::FileCompressor::new();
-                compressor.recursive_compress(
-                    paths.iter().map(Path::new),
-                    kind,
-                    minimum_compression_ratio,
-                    level,
-                    &progress_bars,
-                );
-            }
+            let mut compressor = applesauce::FileCompressor::new();
+            let stats = compressor.recursive_compress(
+                paths.iter().map(Path::new),
+                kind,
+                minimum_compression_ratio,
+                level,
+                &progress_bars,
+            );
             progress_bars.finish();
             tracing::info!("Finished compressing");
+            if verbosity >= Verbosity::Normal {
+                display_stats(&stats);
+            }
         }
         Commands::Decompress(Decompress { paths, manual }) => {
-            {
-                let mut compressor = applesauce::FileCompressor::new();
-                compressor.recursive_decompress(
-                    paths.iter().map(Path::new),
-                    manual,
-                    &progress_bars,
-                );
-            }
+            let mut compressor = applesauce::FileCompressor::new();
+            let stats = compressor.recursive_decompress(
+                paths.iter().map(Path::new),
+                manual,
+                &progress_bars,
+            );
             progress_bars.finish();
-            tracing::info!("Finished compressing");
+            tracing::info!("Finished decompressing");
+            if verbosity >= Verbosity::Normal {
+                display_stats(&stats);
+            }
         }
         Commands::Info(info) => {
             for path in info.paths {
@@ -342,6 +346,32 @@ fn main() {
             }
         }
     }
+}
+
+pub fn display_stats(stats: &Stats) {
+    println!("Total Files: {}", stats.files.load(Ordering::Relaxed));
+    let total_file_sizes = stats.total_file_sizes.load(Ordering::Relaxed);
+    let compressed_size_start = stats.compressed_size_start.load(Ordering::Relaxed);
+    let compressed_size_final = stats.compressed_size_final.load(Ordering::Relaxed);
+    println!(
+        "Total Size (uncompressed):        {} ({})",
+        format_bytes(total_file_sizes),
+        total_file_sizes,
+    );
+    println!(
+        "Starting Size (with compression): {} ({})",
+        format_bytes(compressed_size_start),
+        compressed_size_start,
+    );
+    println!(
+        "Total Size (with compression):    {} ({})",
+        format_bytes(compressed_size_final),
+        compressed_size_final,
+    );
+    println!(
+        "Savings:                          {:.1}%",
+        stats.compression_change_portion() * 100.0
+    );
 }
 
 #[must_use]

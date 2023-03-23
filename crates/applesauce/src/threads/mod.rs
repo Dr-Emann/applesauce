@@ -1,14 +1,12 @@
-use crate::info::{FileCompressionState, FileInfo};
+use crate::info::FileCompressionState;
 use crate::progress::{self, Progress, SkipReason};
-use crate::{info, scan};
+use crate::{info, scan, Stats};
 use applesauce_core::compressor;
-use std::fmt;
-use std::fs::Metadata;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
+use std::{fmt, mem};
 
 pub mod compressing;
 pub mod reader;
@@ -38,68 +36,27 @@ pub struct BackgroundThreads {
     _writer: BgWorker<writer::Work>,
 }
 
-#[derive(Debug, Default)]
-pub struct Stats {
-    /// Total number of files scanned
-    pub files: AtomicU64,
-    /// Total of all file sizes (uncompressed)
-    pub total_file_sizes: AtomicU64,
-
-    pub compressed_size_start: AtomicU64,
-    /// Total of all file sizes (after compression) after performing this operation
-    pub compressed_size_final: AtomicU64,
-    /// Number of files that were compressed before performing this operation
-    pub compressed_file_count_start: AtomicU64,
-    /// Number of files that were compressed after performing this operation
-    pub compressed_file_count_final: AtomicU64,
-
-    /// Number of files that were incompressible (only present when compressing)
-    pub incompressible_file_count: AtomicU64,
-}
-
-impl Stats {
-    fn add_start_file(&self, metadata: &Metadata, file_info: &FileInfo) {
-        self.files
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        self.total_file_sizes
-            .fetch_add(metadata.len(), std::sync::atomic::Ordering::Relaxed);
-        self.compressed_size_start
-            .fetch_add(file_info.on_disk_size, std::sync::atomic::Ordering::Relaxed);
-        match file_info.compression_state {
-            FileCompressionState::Compressed => {
-                self.compressed_file_count_start
-                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            }
-            FileCompressionState::Compressible => {}
-            FileCompressionState::Incompressible(_) => {
-                self.incompressible_file_count
-                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            }
-        }
-    }
-
-    fn add_end_file(&self, _metadata: &Metadata, file_info: &FileInfo) {
-        self.compressed_size_final
-            .fetch_add(file_info.on_disk_size, std::sync::atomic::Ordering::Relaxed);
-        if let FileCompressionState::Compressed = file_info.compression_state {
-            self.compressed_file_count_final
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct OperationContext {
     mode: Mode,
     stats: Stats,
+    finished_stats: crossbeam_channel::Sender<Stats>,
 }
 
 impl OperationContext {
-    fn new(mode: Mode) -> Self {
+    fn new(mode: Mode, finished_stats: crossbeam_channel::Sender<Stats>) -> Self {
         Self {
             mode,
             stats: Stats::default(),
+            finished_stats,
         }
+    }
+}
+
+impl Drop for OperationContext {
+    fn drop(&mut self) {
+        let stats = mem::take(&mut self.stats);
+        let _ = self.finished_stats.send(stats);
     }
 }
 
@@ -158,12 +115,18 @@ impl BackgroundThreads {
         }
     }
 
-    pub fn scan<'a, P>(&self, mode: Mode, paths: impl IntoIterator<Item = &'a Path>, progress: &P)
+    pub fn scan<'a, P>(
+        &self,
+        mode: Mode,
+        paths: impl IntoIterator<Item = &'a Path>,
+        progress: &P,
+    ) -> Stats
     where
         P: Progress + Send + Sync,
         P::Task: Send + Sync + 'static,
     {
-        let operation = Arc::new(OperationContext::new(mode));
+        let (finished_stats, finished_stats_rx) = crossbeam_channel::bounded(1);
+        let operation = Arc::new(OperationContext::new(mode, finished_stats));
         let stats = &operation.stats;
         let chan = self.reader.chan();
 
@@ -209,7 +172,12 @@ impl BackgroundThreads {
             } else {
                 stats.add_end_file(&metadata, &file_info);
             }
-        })
+        });
+        drop(operation);
+
+        finished_stats_rx
+            .recv()
+            .expect("OperationContext will send stats on drop of all arcs")
     }
 }
 
