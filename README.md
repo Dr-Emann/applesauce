@@ -76,16 +76,28 @@ the others.
 
 Applesauce is based on afsctool, but offers several key improvements, including:
 
-#### Improved Multithreading
+#### Improved Performance
 
 afcstool can compress multiple files in parallel, but applesauce parallelizes at
-the block level, so even a single file can be compressed in parallel
+the block level, so even a single file can be compressed in parallel. Applesauce
+can often be several times faster than afsctool, especially for small numbers of
+large files, or large numbers of small files.
 
 #### Reduced Memory Usage
 
 afcstool will load the entire file into memory before compressing it
 (although it does attempt to use mmap for large files). Applesauce will only
 keep the block(s) currently being compressed in memory.
+
+#### Better User Interface
+Applesauce outputs a pretty progress bar while it's working, providing a more
+user-friendly experience than afsctool's sparse output.
+
+#### Better Compression With Many Small Files
+
+afsctool will compress a file which fits in the xattr after compression, even 
+if doing so actually adds more overhead than leaving the file uncompressed.
+Applesauce will not compress a file if it would result in a larger file.
 
 #### Better Error Handling
 

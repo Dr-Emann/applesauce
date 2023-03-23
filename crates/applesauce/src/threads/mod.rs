@@ -102,7 +102,7 @@ impl BackgroundThreads {
         let compressor = BgWorker::new(compressor_threads, &compressing::Work);
         let writer = BgWorker::new(4, &writer::Work);
         let reader = BgWorker::new(
-            2,
+            8,
             &reader::Work {
                 compressor: compressor.chan().clone(),
                 writer: writer.chan().clone(),

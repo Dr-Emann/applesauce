@@ -113,6 +113,8 @@ impl ProgressWithTotal {
         {
             let pb = &self.single;
             if time_to_attach <= now {
+                // TODO: The timer should only start when we actually start reading the file
+                //   but right now, it starts as soon as we scan the directory containing the file
                 let length = pb.length().unwrap_or(1);
                 let remaining = length as f64 / pb.position() as f64;
                 let expected_remaining = pb.elapsed().as_secs_f64() * remaining;
