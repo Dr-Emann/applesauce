@@ -90,7 +90,7 @@ impl ProgressBars {
 enum State {
     Unattached {
         bars: MultiProgress,
-        time_to_attach: Instant,
+        first_tick: Option<Instant>,
     },
     Attached,
 }
@@ -108,16 +108,16 @@ impl ProgressWithTotal {
         let now = Instant::now();
         if let State::Unattached {
             ref bars,
-            time_to_attach,
+            ref mut first_tick,
         } = *state
         {
+            let first_tick = *first_tick.get_or_insert(now);
             let pb = &self.single;
-            if time_to_attach <= now {
-                // TODO: The timer should only start when we actually start reading the file
-                //   but right now, it starts as soon as we scan the directory containing the file
+            let elapsed = now.saturating_duration_since(first_tick);
+            if elapsed >= DELAY {
                 let length = pb.length().unwrap_or(1);
                 let remaining = length as f64 / pb.position() as f64;
-                let expected_remaining = pb.elapsed().as_secs_f64() * remaining;
+                let expected_remaining = elapsed.as_secs_f64() * remaining;
                 if expected_remaining > MIN_ETA.as_secs_f64() {
                     bars.insert(0, pb.clone());
                     *state = State::Attached;
@@ -168,7 +168,7 @@ impl Progress for ProgressBars {
             single,
             state: Mutex::new(State::Unattached {
                 bars: self.bars.clone(),
-                time_to_attach: Instant::now() + DELAY,
+                first_tick: None,
             }),
             verbosity: self.verbosity,
         }
