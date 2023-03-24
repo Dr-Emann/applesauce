@@ -100,7 +100,7 @@ impl BackgroundThreads {
             .unwrap_or(1);
 
         let compressor = BgWorker::new(compressor_threads, &compressing::Work);
-        let writer = BgWorker::new(4, &writer::Work);
+        let writer = BgWorker::new(8, &writer::Work);
         let reader = BgWorker::new(
             8,
             &reader::Work {

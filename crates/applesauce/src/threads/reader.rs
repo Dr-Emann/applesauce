@@ -61,14 +61,17 @@ impl Handler {
                 .unwrap_or(4),
         );
 
-        self.writer
-            .send(writer::WorkItem {
-                context: Arc::clone(&context),
-                file: Arc::clone(&file),
-                blocks: rx,
-                metadata,
-            })
-            .unwrap();
+        {
+            let _enter = tracing::debug_span!("waiting to send to writer").entered();
+            self.writer
+                .send(writer::WorkItem {
+                    context: Arc::clone(&context),
+                    file: Arc::clone(&file),
+                    blocks: rx,
+                    metadata,
+                })
+                .unwrap();
+        }
 
         if let Err(e) = self.read_file_into(&context, &file, file_size, &tx) {
             context
