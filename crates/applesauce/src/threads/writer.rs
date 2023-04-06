@@ -36,6 +36,10 @@ impl BgWork for Work {
     fn make_handler(&self) -> Handler {
         Handler::new()
     }
+
+    fn queue_capacity(&self) -> usize {
+        4
+    }
 }
 
 pub(super) struct Handler {
@@ -67,6 +71,8 @@ impl Handler {
             _ => unreachable!("write_blocks called in non-compress mode"),
         };
         let max_compressed_size = (context.orig_size as f64 * minimum_compression_ratio) as u64;
+
+        let chunks = crate::instrumented_iter(chunks, tracing::debug_span!("waiting for chunk"));
         for chunk in chunks {
             let chunk = chunk?;
 
@@ -106,12 +112,15 @@ impl Handler {
 
         self.decomp_xattr_val_buf.clear();
         writer.finish_decmpfs_data(&mut self.decomp_xattr_val_buf)?;
-        xattr::set(
-            tmp_file.as_file(),
-            decmpfs::XATTR_NAME,
-            &self.decomp_xattr_val_buf,
-            0,
-        )?;
+        {
+            let _entered = tracing::debug_span!("set decmpfs xattr").entered();
+            xattr::set(
+                tmp_file.as_file(),
+                decmpfs::XATTR_NAME,
+                &self.decomp_xattr_val_buf,
+                0,
+            )?;
+        }
 
         copy_metadata(&item.file, tmp_file.as_file())?;
         set_flags(
@@ -119,7 +128,10 @@ impl Handler {
             item.metadata.st_flags() | libc::UF_COMPRESSED,
         )?;
 
-        let new_file = tmp_file.persist(&item.context.path)?;
+        let new_file = {
+            let _entered = tracing::debug_span!("rename tmp file").entered();
+            tmp_file.persist(&item.context.path)?
+        };
         if let Err(e) = reset_times(&new_file, &item.metadata) {
             tracing::error!("Unable to reset times: {e}");
         }
@@ -130,7 +142,9 @@ impl Handler {
         let mut tmp_file = tmp_file_for(&item.context.path)?;
         copy_xattrs(&item.file, tmp_file.as_file())?;
 
-        for chunk in item.blocks {
+        let chunks =
+            crate::instrumented_iter(item.blocks, tracing::debug_span!("waiting for chunk"));
+        for chunk in chunks {
             let chunk = chunk?;
             tmp_file.write_all(&chunk.block)?;
             // Increment progress by the uncompressed size of the block,
@@ -172,6 +186,7 @@ impl WorkHandler<WorkItem> for Handler {
     }
 }
 
+#[tracing::instrument(level="debug", skip_all, err, fields(path=%path.display()))]
 fn tmp_file_for(path: &Path) -> io::Result<NamedTempFile> {
     let mut builder = tempfile::Builder::new();
     if let Some(name) = path.file_name() {
@@ -180,6 +195,7 @@ fn tmp_file_for(path: &Path) -> io::Result<NamedTempFile> {
     builder.tempfile_in(path.parent().ok_or(io::ErrorKind::InvalidInput)?)
 }
 
+#[tracing::instrument(level = "debug", skip_all, err)]
 fn copy_xattrs(src: &File, dst: &File) -> io::Result<()> {
     // SAFETY:
     //   src and dst fds are valid
@@ -200,6 +216,7 @@ fn copy_xattrs(src: &File, dst: &File) -> io::Result<()> {
     }
 }
 
+#[tracing::instrument(level = "debug", skip_all, err)]
 fn copy_metadata(src: &File, dst: &File) -> io::Result<()> {
     // SAFETY:
     //   src and dst fds are valid

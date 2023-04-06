@@ -12,6 +12,9 @@ ci = ["github"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["x86_64-apple-darwin", "aarch64-apple-darwin"]
 
+[profile.release]
+debug = true
+
 # The profile that 'cargo dist' will build with
 [profile.dist]
 inherits = "release"

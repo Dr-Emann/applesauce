@@ -285,6 +285,36 @@ fn try_read_all<R: Read>(mut r: R, buf: &mut [u8]) -> io::Result<usize> {
     Ok(read_len)
 }
 
+struct InstrumentedIter<I> {
+    inner: I,
+    span: tracing::Span,
+}
+
+impl<I> Iterator for InstrumentedIter<I>
+where
+    I: Iterator,
+{
+    type Item = I::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let _enter = self.span.enter();
+        self.inner.next()
+    }
+}
+
+pub(crate) fn instrumented_iter<IntoIt>(
+    inner: IntoIt,
+    span: tracing::Span,
+) -> InstrumentedIter<IntoIt::IntoIter>
+where
+    IntoIt: IntoIterator,
+{
+    InstrumentedIter {
+        inner: inner.into_iter(),
+        span,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -62,7 +62,7 @@ impl Handler {
         );
 
         {
-            let _enter = tracing::debug_span!("waiting to send to writer").entered();
+            let _enter = tracing::debug_span!("waiting for space in writer").entered();
             self.writer
                 .send(writer::WorkItem {
                     context: Arc::clone(&context),
