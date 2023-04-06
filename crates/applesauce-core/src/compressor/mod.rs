@@ -21,6 +21,7 @@ mod zlib;
 pub(crate) trait CompressorImpl {
     /// The offset to start data at, for the specified number of blocks
     #[must_use]
+
     fn header_size(block_count: u64) -> u64;
 
     #[must_use]
@@ -153,6 +154,7 @@ impl Kind {
     }
 
     #[must_use]
+    #[inline]
     pub const fn supported(self) -> bool {
         // Clippy falsely sees these arms as identical:
         //   https://github.com/rust-lang/rust-clippy/issues/9775
@@ -225,6 +227,7 @@ impl Kind {
 }
 
 impl Default for Kind {
+    #[inline]
     fn default() -> Self {
         if Self::Lzfse.supported() {
             Self::Lzfse

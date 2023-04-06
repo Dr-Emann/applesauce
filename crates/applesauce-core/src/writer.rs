@@ -12,6 +12,7 @@ pub trait Open {
 impl<W: Write + Seek, F: FnOnce() -> W> Open for F {
     type ResourceFork = W;
 
+    #[inline]
     fn open_resource_fork(self) -> io::Result<Self::ResourceFork> {
         Ok(self())
     }

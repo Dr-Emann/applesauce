@@ -11,6 +11,7 @@ pub trait Open {
 impl<R: Read + Seek, F: FnOnce() -> R> Open for F {
     type ResourceFork = R;
 
+    #[inline]
     fn open_resource_fork(self) -> io::Result<Self::ResourceFork> {
         Ok(self())
     }
@@ -102,10 +103,12 @@ impl<R: Read + Seek> Reader<R> {
         }
     }
 
+    #[inline]
     pub fn compression_kind(&self) -> compressor::Kind {
         self.kind
     }
 
+    #[inline]
     pub fn remaining_blocks(&self) -> usize {
         match &self.state {
             State::Xattr(cursor) => {

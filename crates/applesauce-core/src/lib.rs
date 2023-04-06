@@ -9,11 +9,13 @@ pub mod writer;
 pub const BLOCK_SIZE: usize = 0x10000;
 
 #[must_use]
+#[inline]
 pub const fn num_blocks(size: u64) -> u64 {
     (size + (BLOCK_SIZE as u64 - 1)) / (BLOCK_SIZE as u64)
 }
 
 #[must_use]
+#[inline]
 pub const fn round_to_block_size(size: u64, block_size: u64) -> u64 {
     match size % block_size {
         0 => size,

@@ -49,6 +49,7 @@ impl fmt::Display for CompressionType {
 
 impl CompressionType {
     #[must_use]
+    #[inline]
     pub const fn new(compressor: compressor::Kind, storage: Storage) -> Self {
         let val = match (compressor, storage) {
             (compressor::Kind::Zlib, Storage::Xattr) => 3,
@@ -62,6 +63,7 @@ impl CompressionType {
     }
 
     #[must_use]
+    #[inline]
     pub const fn compression_storage(self) -> Option<(compressor::Kind, Storage)> {
         match self.0 {
             3 => Some((compressor::Kind::Zlib, Storage::Xattr)),
@@ -75,11 +77,13 @@ impl CompressionType {
     }
 
     #[must_use]
+    #[inline]
     pub const fn from_raw_type(n: u32) -> Self {
         Self(n)
     }
 
     #[must_use]
+    #[inline]
     pub const fn raw_type(self) -> u32 {
         self.0
     }
@@ -198,6 +202,7 @@ pub struct BlockInfo {
 impl BlockInfo {
     pub const SIZE: usize = 8;
 
+    #[inline]
     pub fn from_bytes(data: [u8; Self::SIZE]) -> Self {
         let offset = u32::from_le_bytes(data[..4].try_into().unwrap());
         let compressed_size = u32::from_le_bytes(data[4..].try_into().unwrap());
@@ -207,6 +212,7 @@ impl BlockInfo {
         }
     }
 
+    #[inline]
     pub fn to_bytes(self) -> [u8; Self::SIZE] {
         let mut result = [0; Self::SIZE];
 
