@@ -5,7 +5,7 @@ edition = "2021"
 license = "GPL-3.0-or-later"
 description = "A low level library interface for compressing and decompressing files using macos transparent compression"
 repository = "https://github.com/Dr-Emann/applesauce"
-readme = "../README.md"
+readme = "../../README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
