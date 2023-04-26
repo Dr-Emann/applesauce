@@ -72,7 +72,7 @@ impl<O: Open> Writer<O> {
                     "adding multiple blocks to a single-block writer"
                 );
                 if new_block.len() > decmpfs::MAX_XATTR_DATA_SIZE {
-                    self.force_move_to_resource_fork(new_block)?;
+                    self.write_single_block_as_rfork(new_block)?;
                 } else {
                     block.extend_from_slice(new_block);
                 }
@@ -130,9 +130,31 @@ impl<O: Open> Writer<O> {
         Ok(())
     }
 
+    /// Force blocks to be written to the resource fork
+    ///
+    /// Normally, if a file has a single block, and the block compresses enough,
+    /// it will be written embedded in the decmpfs xattr instead of a resource fork.
+    ///
+    /// Calling this function will ensure that a resource fork is always used.
+    pub fn force_resource_fork(&mut self) -> io::Result<()> {
+        if matches!(self.state, WriterState::MultipleBlocks { .. }) {
+            return Ok(());
+        }
+
+        match &mut self.state {
+            WriterState::SingleBlock { block, .. } => {
+                let block = mem::take(block);
+                self.write_single_block_as_rfork(&block)?;
+            }
+            _ => unreachable!("Just checked that we're not already multiple blocks"),
+        }
+
+        Ok(())
+    }
+
     // Only called on single-block files, to convert to multiple blocks, even with a single block
     // because the block is too large to fit in an xattr
-    fn force_move_to_resource_fork(&mut self, new_block: &[u8]) -> io::Result<()> {
+    fn write_single_block_as_rfork(&mut self, new_block: &[u8]) -> io::Result<()> {
         match mem::replace(&mut self.state, WriterState::Empty) {
             WriterState::SingleBlock { open, block } => {
                 debug_assert!(block.is_empty());
