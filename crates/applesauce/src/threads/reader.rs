@@ -84,6 +84,10 @@ impl Handler {
             }
             return Err(e);
         }
+        // Ensure the file Arc is dropped before finishing sending on the channel,
+        // so the writer can have the only remaining reference, and take ownership of the file.
+        drop(file);
+        drop(tx);
 
         Ok(())
     }

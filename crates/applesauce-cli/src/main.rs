@@ -74,6 +74,13 @@ struct Decompress {
     /// natively read the compressed file
     #[arg(long)]
     manual: bool,
+
+    /// Verify that the compressed file has the same contents as the original before replacing it
+    ///
+    /// This is an extra safety check to ensure that the compressed file is exactly the same as the
+    /// original file.
+    #[arg(long)]
+    verify: bool,
 }
 
 #[derive(Debug, clap::Args)]
@@ -105,6 +112,13 @@ struct Compress {
     /// The type of compression to use
     #[arg(short, long, value_enum, default_value_t = Compression::default())]
     compression: Compression,
+
+    /// Verify that the compressed file has the same contents as the original before replacing it
+    ///
+    /// This is an extra safety check to ensure that the compressed file is exactly the same as the
+    /// original file.
+    #[arg(long)]
+    verify: bool,
 }
 
 #[derive(Debug, clap::Args)]
@@ -220,6 +234,7 @@ fn main() {
             compression,
             minimum_compression_ratio,
             level,
+            verify,
         }) => {
             let kind: Kind = compression.into();
 
@@ -234,6 +249,7 @@ fn main() {
                 minimum_compression_ratio,
                 level,
                 &progress_bars,
+                verify,
             );
             progress_bars.finish();
             tracing::info!("Finished compressing");
@@ -241,12 +257,17 @@ fn main() {
                 display_stats(&stats);
             }
         }
-        Commands::Decompress(Decompress { paths, manual }) => {
+        Commands::Decompress(Decompress {
+            paths,
+            manual,
+            verify,
+        }) => {
             let mut compressor = applesauce::FileCompressor::new();
             let stats = compressor.recursive_decompress(
                 paths.iter().map(Path::new),
                 manual,
                 &progress_bars,
+                verify,
             );
             progress_bars.finish();
             tracing::info!("Finished decompressing");

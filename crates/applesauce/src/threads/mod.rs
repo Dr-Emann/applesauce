@@ -65,6 +65,7 @@ pub struct Context {
     path: PathBuf,
     orig_size: u64,
     progress: Box<dyn progress::Task + Send + Sync>,
+    verify: bool,
 }
 
 impl Drop for Context {
@@ -120,6 +121,7 @@ impl BackgroundThreads {
         mode: Mode,
         paths: impl IntoIterator<Item = &'a Path>,
         progress: &P,
+        verify: bool,
     ) -> Stats
     where
         P: Progress + Send + Sync,
@@ -165,6 +167,7 @@ impl BackgroundThreads {
                         path,
                         progress: inner_progress,
                         orig_size: metadata.len(),
+                        verify,
                     }),
                     metadata,
                 })

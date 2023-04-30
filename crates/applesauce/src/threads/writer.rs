@@ -4,12 +4,12 @@ use applesauce_core::compressor::Kind;
 use applesauce_core::decmpfs;
 use resource_fork::ResourceFork;
 use std::fs::{File, Metadata};
-use std::io::{BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Seek, Write};
 use std::os::fd::AsRawFd;
 use std::os::macos::fs::MetadataExt;
 use std::path::Path;
 use std::sync::Arc;
-use std::{io, ptr};
+use std::{cmp, io, ptr};
 use tempfile::NamedTempFile;
 
 pub(super) type Sender = crossbeam_channel::Sender<WorkItem>;
@@ -97,10 +97,14 @@ impl Handler {
         Ok(())
     }
 
-    fn write_compressed_file(&mut self, item: WorkItem, compressor_kind: Kind) -> io::Result<()> {
+    fn write_compressed_file(
+        &mut self,
+        mut item: WorkItem,
+        compressor_kind: Kind,
+    ) -> io::Result<()> {
         let uncompressed_file_size = item.metadata.len();
 
-        let tmp_file = tmp_file_for(&item.context.path)?;
+        let mut tmp_file = tmp_file_for(&item.context.path)?;
         copy_xattrs(&item.file, tmp_file.as_file())?;
 
         let mut writer =
@@ -127,6 +131,28 @@ impl Handler {
             tmp_file.as_file(),
             item.metadata.st_flags() | libc::UF_COMPRESSED,
         )?;
+
+        if item.context.verify {
+            let _entered = tracing::info_span!("verify").entered();
+
+            let orig_file = Arc::get_mut(&mut item.file)
+                .expect("Reader should drop file before finishing writing blocks, writer should have the only reference");
+            let mut orig_file = BufReader::new(orig_file);
+            let mut new_file = BufReader::new(tmp_file.as_file_mut());
+
+            orig_file.rewind()?;
+            new_file.rewind()?;
+
+            ensure_identical_files(orig_file, new_file).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!(
+                        "verification failed: {e}, {} unchanged",
+                        item.context.path.display()
+                    ),
+                )
+            })?;
+        }
 
         let new_file = {
             let _entered = tracing::debug_span!("rename tmp file").entered();
@@ -234,5 +260,36 @@ fn copy_metadata(src: &File, dst: &File) -> io::Result<()> {
         Ok(())
     } else {
         Err(io::Error::last_os_error())
+    }
+}
+
+fn ensure_identical_files<R1: BufRead, R2: BufRead>(mut lhs: R1, mut rhs: R2) -> io::Result<()> {
+    loop {
+        let l = lhs.fill_buf()?;
+        let r = rhs.fill_buf()?;
+
+        if l.is_empty() && r.is_empty() {
+            return Ok(());
+        }
+        if l.is_empty() || r.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "Files are not the same size",
+            ));
+        }
+
+        let min_len = cmp::min(l.len(), r.len());
+        let l = &l[..min_len];
+        let r = &r[..min_len];
+
+        if l != r {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Files are not identical",
+            ));
+        }
+
+        lhs.consume(min_len);
+        rhs.consume(min_len)
     }
 }

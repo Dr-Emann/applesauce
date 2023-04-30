@@ -220,6 +220,7 @@ impl FileCompressor {
         minimum_compression_ratio: f64,
         level: u32,
         progress: &P,
+        verify: bool,
     ) -> Stats
     where
         P: Progress + Send + Sync,
@@ -233,6 +234,7 @@ impl FileCompressor {
             },
             paths,
             progress,
+            verify,
         )
     }
 
@@ -242,6 +244,7 @@ impl FileCompressor {
         paths: impl IntoIterator<Item = &'a Path>,
         manual: bool,
         progress: &P,
+        verify: bool,
     ) -> Stats
     where
         P: Progress + Send + Sync,
@@ -252,7 +255,7 @@ impl FileCompressor {
         } else {
             Mode::DecompressByReading
         };
-        self.bg_threads.scan(mode, paths, progress)
+        self.bg_threads.scan(mode, paths, progress, verify)
     }
 }
 
@@ -393,8 +396,7 @@ mod tests {
         let old_hash = recursive_hash(dir);
 
         let mut fc = FileCompressor::new();
-        fc.recursive_compress(iter::once(dir), compressor_kind, 1.0, 2, &NoProgress);
-        drop(fc);
+        fc.recursive_compress(iter::once(dir), compressor_kind, 1.0, 2, &NoProgress, true);
 
         let new_hash = recursive_hash(dir);
         assert_eq!(old_hash, new_hash);
@@ -416,8 +418,7 @@ mod tests {
 
         // Now Decompress
         let mut fc = FileCompressor::new();
-        fc.recursive_decompress(iter::once(dir), true, &NoProgress);
-        drop(fc);
+        fc.recursive_decompress(iter::once(dir), true, &NoProgress, true);
 
         let new_hash = recursive_hash(dir);
         assert_eq!(old_hash, new_hash);
