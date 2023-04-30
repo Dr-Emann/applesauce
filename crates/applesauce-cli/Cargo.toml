@@ -26,6 +26,7 @@ cfg-if = "1.0.0"
 clap = { version = "4.0", features = ["derive"] }
 humansize = "2.1"
 indicatif = "0.17.1"
+tikv-jemallocator = "0.5"
 tracing = "0.1"
 tracing-chrome = "0.7"
 tracing-subscriber = { version = "0.3.16", features = ["fmt", "env-filter"] }

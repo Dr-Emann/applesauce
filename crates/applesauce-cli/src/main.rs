@@ -441,6 +441,9 @@ fn format_bytes(byte_size: u64) -> impl fmt::Display {
     humansize::SizeFormatter::new(byte_size, humansize::BINARY)
 }
 
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 #[test]
 fn minimal_truncate() {
     let orig_path = Path::new("abcd");
