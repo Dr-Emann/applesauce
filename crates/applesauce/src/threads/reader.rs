@@ -34,19 +34,13 @@ impl BgWork for Work {
 }
 
 pub(super) struct Handler {
-    buf: Box<[u8; BLOCK_SIZE]>,
     compressor: compressing::Sender,
     writer: writer::Sender,
 }
 
 impl Handler {
     fn new(compressor: compressing::Sender, writer: writer::Sender) -> Self {
-        let buf = vec![0; BLOCK_SIZE].into_boxed_slice().try_into().unwrap();
-        Self {
-            buf,
-            compressor,
-            writer,
-        }
+        Self { compressor, writer }
     }
 
     fn try_handle(&mut self, item: WorkItem) -> io::Result<()> {
@@ -107,7 +101,7 @@ impl Handler {
                     compressor
                         .send(compressing::WorkItem {
                             context: Arc::clone(context),
-                            data: data.to_vec(),
+                            data,
                             slot,
                             kind,
                         })
@@ -139,9 +133,10 @@ impl Handler {
             }
             Mode::DecompressByReading => {
                 self.with_file_chunks(file, expected_len, tx, |slot, data| {
+                    let orig_size = data.len() as u64;
                     let res = slot.finish(Ok(Chunk {
-                        block: data.to_vec(),
-                        orig_size: data.len() as u64,
+                        block: data,
+                        orig_size,
                     }));
                     if let Err(e) = res {
                         // This should only happen if the writer had an error
@@ -161,7 +156,7 @@ impl Handler {
         file: &File,
         expected_len: u64,
         tx: &seq_queue::Sender<io::Result<writer::Chunk>>,
-        mut f: impl FnMut(Slot<io::Result<writer::Chunk>>, &[u8]) -> io::Result<()>,
+        mut f: impl FnMut(Slot<io::Result<writer::Chunk>>, Vec<u8>) -> io::Result<()>,
     ) -> io::Result<bool> {
         let mut total_read = 0;
         let block_span = tracing::debug_span!("reading blocks");
@@ -175,19 +170,33 @@ impl Handler {
                     None => return Ok(false),
                 }
             };
-            let n = try_read_all(file, &mut *self.buf)?;
-            if n == 0 {
-                break;
-            }
-            total_read += u64::try_from(n).unwrap();
-            if total_read > expected_len {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "file size changed while reading",
-                ));
-            }
 
-            f(slot, &self.buf[..n])?;
+            #[allow(clippy::uninit_vec)]
+            // SAFETY: we just allocated this with capacity, and we will truncate it before
+            //         allowing it to escape. This is not technically safe, but there's no
+            //         io api that lets us use an uninit buffer yet. However, file is a
+            //         std::io::File, which won't do wonky things in read, and won't lie about
+            //         the return value.
+            let buf = unsafe {
+                let mut buf = Vec::with_capacity(BLOCK_SIZE);
+                buf.set_len(BLOCK_SIZE);
+
+                let n = try_read_all(file, &mut buf)?;
+                if n == 0 {
+                    break;
+                }
+                total_read += u64::try_from(n).unwrap();
+                if total_read > expected_len {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "file size changed while reading",
+                    ));
+                }
+                buf.truncate(n);
+                buf
+            };
+
+            f(slot, buf)?;
         }
         if total_read != expected_len {
             // The writer will be notified by returning an error
