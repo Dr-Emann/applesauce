@@ -28,15 +28,15 @@ Alternatively, you can download pre-built binaries from the [GitHub releases pag
 To use Applesauce, run the following command:
 
 ```console
-applesauce [compress|decompress|info] file
+applesauce [compress|decompress|info] file/directory
 ```
 
 
 The options are as follows:
 
-- `compress`: Compresses the specified file using one of three compression algorithms (LZFSE, LZVN, or ZLIB).
-- `decompress`: Decompresses the specified file.
-- `info`: Prints information about the specified compressed file, including the compression ratio and compression algorithm used.
+- `compress`: Compresses the specified file/directory using one of three compression algorithms (LZFSE, LZVN, or ZLIB).
+- `decompress`: Decompresses the specified file/directory.
+- `info`: Prints information about the specified compressed file/directory, including the compression ratio and compression algorithm used.
 
 For example, to compress a file named `example.txt` using the ZLIB compression algorithm, you would run:
 
@@ -65,7 +65,8 @@ Applesauce supports three compression algorithms:
   compression ratio.
 - ZLIB: This is a widely used compression algorithm that is implemented in many
   software packages. It is slower than LZFSE and LZVN, but can offer a higher
-  compression ratio.
+  compression ratio (especially with `-l 9`, but not always: it depends on the
+  type of data being compressed).
 
 Applesauce defaults to using LZFSE compression.
 Depending on the type of data being compressed and the desired balance between
@@ -81,7 +82,7 @@ Applesauce is based on afsctool, but offers several key improvements, including:
 afcstool can compress multiple files in parallel, but applesauce parallelizes at
 the block level, so even a single file can be compressed in parallel. Applesauce
 can often be several times faster than afsctool, especially for small numbers of
-large files, or large numbers of small files.
+large files.
 
 #### Reduced Memory Usage
 
@@ -90,6 +91,7 @@ afcstool will load the entire file into memory before compressing it
 keep the block(s) currently being compressed in memory.
 
 #### Better User Interface
+
 Applesauce outputs a pretty progress bar while it's working, providing a more
 user-friendly experience than afsctool's sparse output.
 
@@ -107,15 +109,18 @@ the file may be left in an invalid state.
 
 Applesauce compresses/decompresses files to a temporary file and then atomically
 renames the temporary file to the original file only when the operation is
-complete.
+complete: the file is never left in an invalid state, even if the program is
+harshly terminated.
 
 This is no replacement for backups: please do not use applesauce on files you
 cannot afford to lose.
 
 ## License
+
 Applesauce is licensed under the GNU General Public License version 3 (GPLv3).
 
 ## Contributions
+
 Contributions to Applesauce are welcome! If you would like to contribute code,
 please open a pull request on the GitHub repository. If you find a bug or have
 a feature request, please open an issue on the repository.
