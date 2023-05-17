@@ -132,7 +132,7 @@ impl Handler {
             item.metadata.st_flags() | libc::UF_COMPRESSED,
         )?;
 
-        if item.context.verify {
+        if item.context.operation.verify {
             let _entered = tracing::info_span!("verify").entered();
 
             let orig_file = Arc::get_mut(&mut item.file)

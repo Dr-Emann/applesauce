@@ -41,14 +41,16 @@ pub struct OperationContext {
     mode: Mode,
     stats: Stats,
     finished_stats: crossbeam_channel::Sender<Stats>,
+    verify: bool,
 }
 
 impl OperationContext {
-    fn new(mode: Mode, finished_stats: crossbeam_channel::Sender<Stats>) -> Self {
+    fn new(mode: Mode, finished_stats: crossbeam_channel::Sender<Stats>, verify: bool) -> Self {
         Self {
             mode,
             stats: Stats::default(),
             finished_stats,
+            verify,
         }
     }
 }
@@ -65,7 +67,6 @@ pub struct Context {
     path: PathBuf,
     orig_size: u64,
     progress: Box<dyn progress::Task + Send + Sync>,
-    verify: bool,
 }
 
 impl Drop for Context {
@@ -128,7 +129,7 @@ impl BackgroundThreads {
         P::Task: Send + Sync + 'static,
     {
         let (finished_stats, finished_stats_rx) = crossbeam_channel::bounded(1);
-        let operation = Arc::new(OperationContext::new(mode, finished_stats));
+        let operation = Arc::new(OperationContext::new(mode, finished_stats, verify));
         let stats = &operation.stats;
         let chan = self.reader.chan();
 
@@ -167,7 +168,6 @@ impl BackgroundThreads {
                         path,
                         progress: inner_progress,
                         orig_size: metadata.len(),
-                        verify,
                     }),
                     metadata,
                 })
