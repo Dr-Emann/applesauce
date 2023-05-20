@@ -7,7 +7,10 @@ mod imp;
 #[path = "external.rs"]
 mod imp;
 
-pub use imp::{Impl, Lzfse};
+use crate::compressor::lz;
+pub use imp::Impl;
+
+pub type Lzfse = lz::Lz<Impl>;
 
 #[test]
 fn round_trip() {

@@ -1,8 +1,6 @@
 use crate::compressor::lz;
 use std::cmp;
 
-pub type Lzfse = lz::Lz<Impl>;
-
 pub enum Impl {}
 
 const ALGORITHM: bindings::compression_algorithm =

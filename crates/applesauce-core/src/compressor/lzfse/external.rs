@@ -2,8 +2,6 @@ use crate::compressor::lz;
 use lzfse_sys::{lzfse_decode_buffer, lzfse_decode_scratch_size, lzfse_encode_buffer};
 use std::cmp;
 
-pub type Lzfse = lz::Lz<Impl>;
-
 pub enum Impl {}
 
 impl lz::Impl for Impl {
