@@ -48,17 +48,16 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         // buf is valid to write up to scratch size bytes
         let len = unsafe { I::encode(&mut dst[..max_compress_size], src, &mut self.buf) };
         debug_assert!(len <= max_compress_size);
+
         if len == 0 {
-            return if let Some(uncompressed_prefix) = I::UNCOMPRESSED_PREFIX {
-                tracing::trace!("storing uncompressed data");
-                dst[0] = uncompressed_prefix;
-                dst[1..][..src.len()].copy_from_slice(src);
-                Ok(src.len() + 1)
-            } else {
-                Err(io::ErrorKind::WriteZero.into())
-            };
+            let uncompressed_prefix = I::UNCOMPRESSED_PREFIX.ok_or(io::ErrorKind::WriteZero)?;
+            tracing::trace!("storing uncompressed data");
+            dst[0] = uncompressed_prefix;
+            dst[1..][..src.len()].copy_from_slice(src);
+            Ok(src.len() + 1)
+        } else {
+            Ok(len)
         }
-        Ok(len)
     }
 
     fn decompress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
