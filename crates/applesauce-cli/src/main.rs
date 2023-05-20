@@ -375,22 +375,22 @@ pub fn display_stats(stats: &Stats) {
     let compressed_size_start = stats.compressed_size_start.load(Ordering::Relaxed);
     let compressed_size_final = stats.compressed_size_final.load(Ordering::Relaxed);
     println!(
-        "Total Size (uncompressed):        {} ({})",
+        "Starting Size (total filesize): {} ({})",
         format_bytes(total_file_sizes),
         total_file_sizes,
     );
     println!(
-        "Starting Size (with compression): {} ({})",
+        "Starting Size (on disk):        {} ({})",
         format_bytes(compressed_size_start),
         compressed_size_start,
     );
     println!(
-        "Total Size (with compression):    {} ({})",
+        "Final Size (on disk):           {} ({})",
         format_bytes(compressed_size_final),
         compressed_size_final,
     );
     println!(
-        "Savings:                          {:.1}%",
+        "Savings:                        {:.1}%",
         stats.compression_change_portion() * 100.0
     );
 }
