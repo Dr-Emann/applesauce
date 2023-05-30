@@ -119,3 +119,34 @@ impl<R: Read + Seek> Reader<R> {
         }
     }
 }
+
+impl<R: Read + Seek> IntoIterator for Reader<R> {
+    type Item = io::Result<Vec<u8>>;
+    type IntoIter = IntoIter<R>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter { reader: self }
+    }
+}
+
+pub struct IntoIter<R> {
+    reader: Reader<R>,
+}
+
+impl<R: Read + Seek> Iterator for IntoIter<R> {
+    type Item = io::Result<Vec<u8>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut buf = Vec::new();
+        match self.reader.read_block_into(&mut buf) {
+            Ok(true) => Some(Ok(buf)),
+            Ok(false) => None,
+            Err(err) => Some(Err(err)),
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.reader.remaining_blocks();
+        (remaining, Some(remaining))
+    }
+}

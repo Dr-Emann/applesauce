@@ -119,6 +119,10 @@ struct Compress {
     /// original file.
     #[arg(long)]
     verify: bool,
+
+    /// Don't modify any files, but report how much space would be saved
+    #[arg(short = 'n', long)]
+    dry_run: bool,
 }
 
 #[derive(Debug, clap::Args)]
@@ -372,8 +376,8 @@ fn main() {
 pub fn display_stats(stats: &Stats) {
     println!("Total Files: {}", stats.files.load(Ordering::Relaxed));
     let total_file_sizes = stats.total_file_sizes.load(Ordering::Relaxed);
-    let compressed_size_start = stats.compressed_size_start.load(Ordering::Relaxed);
-    let compressed_size_final = stats.compressed_size_final.load(Ordering::Relaxed);
+    let compressed_size_start = stats.on_disk_start.load(Ordering::Relaxed);
+    let compressed_size_final = stats.on_disk_final.load(Ordering::Relaxed);
     println!(
         "Starting Size (total filesize): {} ({})",
         format_bytes(total_file_sizes),

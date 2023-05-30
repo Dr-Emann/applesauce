@@ -91,23 +91,29 @@ impl Handler {
         context: &Arc<Context>,
         file: &File,
         expected_len: u64,
-        tx: &seq_queue::Sender<io::Result<writer::Chunk>>,
+        tx: Option<&seq_queue::Sender<io::Result<writer::Chunk>>>,
     ) -> io::Result<()> {
         match context.operation.mode {
             Mode::Compress { kind, .. } => {
                 let compressor = self.compressor.clone();
-                self.with_file_chunks(file, expected_len, tx, |slot, data| {
-                    let _enter = tracing::debug_span!("waiting to send to compressor").entered();
-                    compressor
-                        .send(compressing::WorkItem {
-                            context: Arc::clone(context),
-                            data,
-                            slot,
-                            kind,
-                        })
-                        .unwrap();
-                    Ok(())
-                })?;
+                self.with_file_chunks(
+                    file,
+                    expected_len,
+                    || tx.prepare_send(),
+                    |slot, data| {
+                        let _enter =
+                            tracing::debug_span!("waiting to send to compressor").entered();
+                        compressor
+                            .send(compressing::WorkItem {
+                                context: Arc::clone(context),
+                                data,
+                                slot: Some(slot),
+                                kind,
+                            })
+                            .unwrap();
+                        Ok(())
+                    },
+                )?;
             }
             Mode::DecompressManually => {
                 rfork_storage::with_compressed_blocks(file, |kind| {
@@ -132,18 +138,23 @@ impl Handler {
                 })?;
             }
             Mode::DecompressByReading => {
-                self.with_file_chunks(file, expected_len, tx, |slot, data| {
-                    let orig_size = data.len() as u64;
-                    let res = slot.finish(Ok(Chunk {
-                        block: data,
-                        orig_size,
-                    }));
-                    if let Err(e) = res {
-                        // This should only happen if the writer had an error
-                        tracing::debug!("error finishing chunk: {e}");
-                    }
-                    Ok(())
-                })?;
+                self.with_file_chunks(
+                    file,
+                    expected_len,
+                    || tx.prepare_send(),
+                    |slot, data| {
+                        let orig_size = data.len() as u64;
+                        let res = slot.finish(Ok(Chunk {
+                            block: data,
+                            orig_size,
+                        }));
+                        if let Err(e) = res {
+                            // This should only happen if the writer had an error
+                            tracing::debug!("error finishing chunk: {e}");
+                        }
+                        Ok(())
+                    },
+                )?;
             }
         }
 
@@ -151,25 +162,19 @@ impl Handler {
     }
 
     // return true if reading succeeded, false if the writer closed the channel
-    fn with_file_chunks(
+    fn with_file_chunks<P>(
         &mut self,
         file: &File,
         expected_len: u64,
-        tx: &seq_queue::Sender<io::Result<writer::Chunk>>,
-        mut f: impl FnMut(Slot<io::Result<writer::Chunk>>, Vec<u8>) -> io::Result<()>,
+        mut prep: impl FnMut() -> Option<P>,
+        mut f: impl FnMut(P, Vec<u8>) -> io::Result<()>,
     ) -> io::Result<bool> {
         let mut total_read = 0;
         let block_span = tracing::debug_span!("reading blocks");
         loop {
             let _enter = block_span.enter();
 
-            let slot = {
-                let _enter = tracing::debug_span!("waiting for free slot").entered();
-                match tx.prepare_send() {
-                    Some(slot) => slot,
-                    None => return Ok(false),
-                }
-            };
+            let Some(prepped) = prep() else { return Ok(false) };
 
             #[allow(clippy::uninit_vec)]
             // SAFETY: we just allocated this with capacity, and we will truncate it before
@@ -196,7 +201,7 @@ impl Handler {
                 buf
             };
 
-            f(slot, buf)?;
+            f(prepped, buf)?;
         }
         if total_read != expected_len {
             // The writer will be notified by returning an error
@@ -214,5 +219,36 @@ impl WorkHandler<WorkItem> for Handler {
         if let Err(e) = self.try_handle(item) {
             tracing::error!("unable to compress file: {}", e);
         }
+    }
+}
+
+struct FileChunkIterator<'a> {
+    file: &'a File,
+}
+
+impl<'a> Iterator for FileChunkIterator<'a> {
+    type Item = io::Result<Vec<u8>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        #[allow(clippy::uninit_vec)]
+        // SAFETY: we just allocated this with capacity, and we will truncate it before
+        //         allowing it to escape. This is not technically safe, but there's no
+        //         io api that lets us use an uninit buffer yet. However, file is a
+        //         std::io::File, which won't do wonky things in read, and won't lie about
+        //         the return value.
+        Some(unsafe {
+            let mut buf = Vec::with_capacity(BLOCK_SIZE);
+            buf.set_len(BLOCK_SIZE);
+
+            let n = match try_read_all(self.file, &mut buf) {
+                Ok(n) => n,
+                Err(e) => return Some(Err(e)),
+            };
+            if n == 0 {
+                return None;
+            }
+            buf.truncate(n);
+            Ok(buf)
+        })
     }
 }

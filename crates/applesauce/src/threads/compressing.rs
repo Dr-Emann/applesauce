@@ -3,6 +3,7 @@ use crate::threads::{writer, BgWork, Context, Mode, WorkHandler};
 use applesauce_core::compressor::{self, Compressor};
 use applesauce_core::BLOCK_SIZE;
 use std::io;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 pub(super) type Sender = crossbeam_channel::Sender<WorkItem>;
@@ -11,7 +12,7 @@ pub(super) struct WorkItem {
     pub context: Arc<Context>,
     pub data: Vec<u8>,
     pub kind: compressor::Kind,
-    pub slot: seq_queue::Slot<io::Result<writer::Chunk>>,
+    pub slot: Option<seq_queue::Slot<io::Result<writer::Chunk>>>,
 }
 
 pub(super) struct Work;
@@ -59,22 +60,33 @@ impl WorkHandler<WorkItem> for Handler {
         let size = match size {
             Ok(size) => size,
             Err(e) => {
-                if item.slot.finish(Err(e)).is_err() {
-                    // This should only be because of a failure already reported by the writer
-                    tracing::debug!("unable to finish slot");
+                if let Some(slot) = item.slot {
+                    if slot.finish(Err(e)).is_err() {
+                        // This should only be because of a failure already reported by the writer
+                        tracing::debug!("unable to finish slot");
+                    }
+                } else {
+                    item.context
+                        .dry_run_compressed_size
+                        .store(item.context.orig_size, Ordering::Relaxed);
                 }
                 return;
             }
         };
         debug_assert!(size != 0);
-
-        let chunk = writer::Chunk {
-            block: self.buf[..size].to_vec(),
-            orig_size: item.data.len().try_into().unwrap(),
-        };
-        if item.slot.finish(Ok(chunk)).is_err() {
-            // This should only be because of a failure already reported by the writer
-            tracing::debug!("unable to finish slot");
+        if let Some(slot) = item.slot {
+            let chunk = writer::Chunk {
+                block: self.buf[..size].to_vec(),
+                orig_size: item.data.len().try_into().unwrap(),
+            };
+            if slot.finish(Ok(chunk)).is_err() {
+                // This should only be because of a failure already reported by the writer
+                tracing::debug!("unable to finish slot");
+            }
+        } else {
+            item.context
+                .dry_run_compressed_size
+                .fetch_add(size as u64, Ordering::Relaxed);
         }
     }
 }

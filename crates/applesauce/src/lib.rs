@@ -134,9 +134,10 @@ pub struct Stats {
     /// Total of all file sizes (uncompressed)
     pub total_file_sizes: AtomicU64,
 
-    pub compressed_size_start: AtomicU64,
-    /// Total of all file sizes (after compression) after performing this operation
-    pub compressed_size_final: AtomicU64,
+    /// Total size on disk of all files before performing this operation
+    pub on_disk_start: AtomicU64,
+    /// Total size on disk of all files after performing this operation
+    pub on_disk_final: AtomicU64,
     /// Number of files that were compressed before performing this operation
     pub compressed_file_count_start: AtomicU64,
     /// Number of files that were compressed after performing this operation
@@ -152,7 +153,7 @@ impl Stats {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.total_file_sizes
             .fetch_add(metadata.len(), std::sync::atomic::Ordering::Relaxed);
-        self.compressed_size_start
+        self.on_disk_start
             .fetch_add(file_info.on_disk_size, std::sync::atomic::Ordering::Relaxed);
         match file_info.compression_state {
             FileCompressionState::Compressed => {
@@ -167,8 +168,8 @@ impl Stats {
         }
     }
 
-    fn add_end_file(&self, _metadata: &Metadata, file_info: &FileInfo) {
-        self.compressed_size_final
+    fn add_end_file(&self, file_info: &FileInfo) {
+        self.on_disk_final
             .fetch_add(file_info.on_disk_size, std::sync::atomic::Ordering::Relaxed);
         if let FileCompressionState::Compressed = file_info.compression_state {
             self.compressed_file_count_final
@@ -182,7 +183,7 @@ impl Stats {
             .total_file_sizes
             .load(std::sync::atomic::Ordering::Relaxed);
         let compressed_size = self
-            .compressed_size_final
+            .on_disk_final
             .load(std::sync::atomic::Ordering::Relaxed);
         1.0 - (compressed_size as f64 / total_file_sizes as f64)
     }
@@ -190,10 +191,10 @@ impl Stats {
     #[must_use]
     pub fn compression_change_portion(&self) -> f64 {
         let compressed_size_start = self
-            .compressed_size_start
+            .on_disk_start
             .load(std::sync::atomic::Ordering::Relaxed);
         let compressed_size_final = self
-            .compressed_size_final
+            .on_disk_final
             .load(std::sync::atomic::Ordering::Relaxed);
         // This is reversed because we're looking at the change in compression:
         // we want a smaller final size to be a positive change in compression

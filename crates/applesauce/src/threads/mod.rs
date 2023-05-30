@@ -1,9 +1,10 @@
-use crate::info::FileCompressionState;
+use crate::info::{FileCompressionState, FileInfo, IncompressibleReason};
 use crate::progress::{self, Progress, SkipReason};
 use crate::{info, scan, Stats};
 use applesauce_core::compressor;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::{fmt, mem};
@@ -66,14 +67,40 @@ pub struct Context {
     operation: Arc<OperationContext>,
     path: PathBuf,
     orig_size: u64,
+    dry_run_compressed_size: AtomicU64,
     progress: Box<dyn progress::Task + Send + Sync>,
 }
 
 impl Drop for Context {
     fn drop(&mut self) {
+        // Files weren't actually modified if this is a dry run, we can't get the size from disk
+        if let Mode::Compress {
+            dry_run: true,
+            minimum_compression_ratio,
+            ..
+        } = self.operation.mode
+        {
+            let dry_run_size = self.dry_run_compressed_size.load(Ordering::Relaxed);
+            let file_info =
+                if dry_run_size as f64 <= minimum_compression_ratio * self.orig_size as f64 {
+                    FileInfo {
+                        on_disk_size: dry_run_size,
+                        compression_state: FileCompressionState::Compressed,
+                    }
+                } else {
+                    FileInfo {
+                        on_disk_size: self.orig_size,
+                        compression_state: FileCompressionState::Incompressible(
+                            IncompressibleReason::TooLarge(dry_run_size),
+                        ),
+                    }
+                };
+            self.operation.stats.add_end_file(&file_info);
+            return;
+        }
         let Ok(metadata) = self.path.symlink_metadata() else { return };
         let file_info = info::get_file_info(&self.path, &metadata);
-        self.operation.stats.add_end_file(&metadata, &file_info);
+        self.operation.stats.add_end_file(&file_info);
     }
 }
 
@@ -83,6 +110,7 @@ pub enum Mode {
         kind: compressor::Kind,
         minimum_compression_ratio: f64,
         level: u32,
+        dry_run: bool,
     },
     DecompressManually,
     DecompressByReading,
@@ -91,6 +119,10 @@ pub enum Mode {
 impl Mode {
     pub fn is_compressing(self) -> bool {
         matches!(self, Self::Compress { .. })
+    }
+
+    pub fn is_dry_run(self) -> bool {
+        matches!(self, Self::Compress { dry_run: true, .. })
     }
 }
 
@@ -173,7 +205,7 @@ impl BackgroundThreads {
                 })
                 .unwrap();
             } else {
-                stats.add_end_file(&metadata, &file_info);
+                stats.add_end_file(&file_info);
             }
         });
         drop(operation);
