@@ -2,12 +2,12 @@ use std::fmt;
 use std::fmt::Formatter;
 
 #[derive(Debug)]
-pub struct Sender<T>(crossbeam_channel::Sender<crossbeam_channel::Receiver<T>>);
+pub struct Sender<T>(crossbeam_channel::Sender<oneshot::Receiver<T>>);
 
 #[derive(Debug)]
-pub struct Receiver<T>(crossbeam_channel::Receiver<crossbeam_channel::Receiver<T>>);
+pub struct Receiver<T>(crossbeam_channel::Receiver<oneshot::Receiver<T>>);
 
-pub struct Slot<T>(crossbeam_channel::Sender<T>);
+pub struct Slot<T>(oneshot::Sender<T>);
 
 pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     let (tx, rx) = crossbeam_channel::bounded(cap);
@@ -16,7 +16,7 @@ pub fn bounded<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 
 impl<T> Sender<T> {
     pub fn prepare_send(&self) -> Option<Slot<T>> {
-        let (tx, rx) = crossbeam_channel::bounded(1);
+        let (tx, rx) = oneshot::channel();
         self.0.send(rx).ok()?;
         Some(Slot(tx))
     }
@@ -29,7 +29,7 @@ impl<T> Clone for Sender<T> {
 }
 
 impl<T> Slot<T> {
-    pub fn finish(self, item: T) -> Result<(), crossbeam_channel::SendError<T>> {
+    pub fn finish(self, item: T) -> Result<(), oneshot::SendError<T>> {
         self.0.send(item)
     }
 }

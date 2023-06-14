@@ -20,3 +20,6 @@ lto = "fat"
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+[patch.crates-io]
+oneshot = { git = "https://github.com/Dr-Emann/oneshot.git", branch = "misc_tests"}
