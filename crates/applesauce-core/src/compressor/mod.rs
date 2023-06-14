@@ -11,7 +11,7 @@ use std::{fmt, io};
 
 #[cfg(any(feature = "lzfse", feature = "lzvn"))]
 mod lz;
-#[cfg(any(feature = "lzfse"))]
+#[cfg(feature = "lzfse")]
 mod lzfse;
 #[cfg(feature = "lzvn")]
 mod lzvn;
