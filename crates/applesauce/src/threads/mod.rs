@@ -195,7 +195,7 @@ trait WorkHandler<WorkItem> {
 }
 
 trait BgWork {
-    type Item: Send + Sync + 'static;
+    type Item: Send + 'static;
     type Handler: WorkHandler<Self::Item> + Send + 'static;
 
     const NAME: &'static str;
