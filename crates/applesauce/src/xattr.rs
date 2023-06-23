@@ -275,7 +275,7 @@ pub fn with_names<T: XattrSource + ?Sized, F: FnMut(&CStr) -> io::Result<()>>(
     let mut raw_buf = &raw_buf[..];
 
     while !raw_buf.is_empty() {
-        let next_end = memchr(0, raw_buf).ok_or_else(|| {
+        let next_end = memchr(b'\0', raw_buf).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::Other,
                 "expected null terminator in xattr names",
@@ -283,7 +283,7 @@ pub fn with_names<T: XattrSource + ?Sized, F: FnMut(&CStr) -> io::Result<()>>(
         })?;
         let end_including_term = next_end + 1;
         let name = CStr::from_bytes_with_nul(&raw_buf[..end_including_term])
-            .map_err(|_| io::ErrorKind::InvalidInput)?;
+            .expect("Found the first null, cannot be interior or missing null char");
         f(name)?;
         raw_buf = &raw_buf[end_including_term..];
     }
