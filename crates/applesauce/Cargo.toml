@@ -2,7 +2,7 @@
 name = "applesauce"
 description = "A tool for compressing files with apple file system compression"
 license = "GPL-3.0-or-later"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 keywords = ["compression", "afsc", "decmpfs"]
 categories = ["compression"]
@@ -24,8 +24,8 @@ system-lzfse = ["lzfse"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-resource-fork = { version = "0.1", path = "../resource-fork" }
-applesauce-core = { version = "^0.1.1", path = "../applesauce-core" }
+resource-fork = { version = "^0.2.0", path = "../resource-fork" }
+applesauce-core = { version = "^0.2.0", path = "../applesauce-core" }
 
 crossbeam-channel = "0.5.6"
 ignore = "0.4.18"
