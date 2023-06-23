@@ -11,15 +11,58 @@ pub const XATTR_NAME: &CStr = {
     unsafe { CStr::from_bytes_with_nul_unchecked(bytes) }
 };
 
+/// A Handle to a Resource Fork
+///
+/// A Resource Fork is a macos specific file attribute that contains arbitrary
+/// binary data.
 pub struct ResourceFork<'a> {
     file: &'a File,
-    offset: u32,
+    position: u32,
 }
 
 impl<'a> ResourceFork<'a> {
+    /// Create a new Resource Fork handle
+    ///
+    /// Note that if the file does not already have a resource fork, it will
+    /// only be created when the first write is performed.
     #[must_use]
     pub fn new(file: &'a File) -> Self {
-        Self { file, offset: 0 }
+        Self { file, position: 0 }
+    }
+
+    /// Returns the current position of the resource fork
+    #[must_use]
+    pub fn position(&self) -> u32 {
+        self.position
+    }
+
+    /// Seek to a new position in the resource fork infallibly
+    pub fn set_position(&mut self, position: u32) {
+        self.position = position;
+    }
+
+    /// Remove the resource fork from the file
+    ///
+    /// This will remove any existing resource fork
+    ///
+    /// Note that this does not reset the current offset, it may be desired to
+    /// seek to the beginning of the resource fork after calling this, if you wish to
+    /// continue writing to the resource fork
+    pub fn delete(&mut self) -> io::Result<()> {
+        // SAFETY:
+        //   fd is valid because we have a handle to the file
+        //   xattr name is valid, and null terminated because it's a static CStr
+        let rc = unsafe {
+            libc::fremovexattr(
+                self.file.as_raw_fd(),
+                XATTR_NAME.as_ptr(),
+                XATTR_SHOWCOMPRESSION,
+            )
+        };
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
     }
 }
 
@@ -29,7 +72,7 @@ impl<'a> io::Write for ResourceFork<'a> {
             .len()
             .try_into()
             .map_err(|_| io::ErrorKind::InvalidInput)?;
-        let end_offset = self.offset.checked_add(len).ok_or_else(|| {
+        let end_offset = self.position.checked_add(len).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::Other,
                 "unable to fit resource fork in 32 bits",
@@ -44,14 +87,14 @@ impl<'a> io::Write for ResourceFork<'a> {
                 XATTR_NAME.as_ptr(),
                 buf.as_ptr().cast(),
                 buf.len(),
-                self.offset,
+                self.position,
                 XATTR_SHOWCOMPRESSION,
             )
         };
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
-        self.offset = end_offset;
+        self.position = end_offset;
         Ok(buf.len())
     }
 
@@ -67,16 +110,16 @@ impl Read for ResourceFork<'_> {
         // it actually returns the size remaining _after_ the passed index
 
         // SAFETY:
-        //   fd is valid
-        //   xattr name is valid, and null terminated
-        //   buf is valid, and writable for up to len() bytes
+        //   fd is valid because we have a handle to the file
+        //   xattr name is valid, and null terminated because it's a static CStr
+        //   buf is valid, and writable for up to len() bytes because it's passed as a mut slice
         let rc = unsafe {
             libc::fgetxattr(
                 self.file.as_raw_fd(),
                 XATTR_NAME.as_ptr(),
                 buf.as_mut_ptr().cast(),
                 buf.len(),
-                self.offset,
+                self.position,
                 XATTR_SHOWCOMPRESSION,
             )
         };
@@ -91,7 +134,7 @@ impl Read for ResourceFork<'_> {
             rc as usize
         };
         let bytes_read = cmp::min(remaining_len, buf.len());
-        self.offset += u32::try_from(bytes_read).unwrap();
+        self.position += u32::try_from(bytes_read).unwrap();
         Ok(bytes_read)
     }
 }
@@ -102,8 +145,8 @@ impl Seek for ResourceFork<'_> {
             SeekFrom::Start(i) => i.try_into().map_err(|_| io::ErrorKind::InvalidInput)?,
             SeekFrom::End(i) => {
                 // SAFETY:
-                // fd is valid
-                // xattr name is valid, and null terminated
+                // fd is valid because we have a handle to the file
+                // xattr name is valid, and null terminated because it's a static CStr
                 // value == NULL && size == 0 is allowed, to just return the length of the value
                 let mut rc = unsafe {
                     libc::fgetxattr(
@@ -130,14 +173,14 @@ impl Seek for ResourceFork<'_> {
                 offset.try_into().map_err(|_| io::ErrorKind::InvalidInput)?
             }
             SeekFrom::Current(i) => {
-                let current_offset = u64::from(self.offset);
+                let current_offset = u64::from(self.position);
                 let offset = current_offset
                     .checked_add_signed(i)
                     .ok_or(io::ErrorKind::InvalidInput)?;
                 offset.try_into().map_err(|_| io::ErrorKind::InvalidInput)?
             }
         };
-        self.offset = new_offset;
+        self.position = new_offset;
         Ok(new_offset.into())
     }
 }
@@ -242,7 +285,7 @@ mod tests {
         let mut buf_vec = vec![1, 2, 3];
         // at end already, should empty read
         assert_eq!(rfork.read(&mut buf).unwrap(), 0);
-        assert_eq!(rfork.offset as usize, data.len());
+        assert_eq!(rfork.position as usize, data.len());
 
         assert_eq!(
             rfork.seek(SeekFrom::Current(10)).unwrap(),
