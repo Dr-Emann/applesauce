@@ -1,24 +1,36 @@
+//! Helpers for working with decmpfs xattrs
+
 use crate::compressor;
 use std::ffi::CStr;
 use std::io::Write;
 use std::{fmt, io};
 
+/// The length of the decmpfs xattr header
 pub const HEADER_LEN: usize = 16;
+/// The maximum size of a decmpfs xattr
 pub const MAX_XATTR_SIZE: usize = 3802;
+/// The maximum size of the data in a decmpfs xattr (following the header)
 pub const MAX_XATTR_DATA_SIZE: usize = MAX_XATTR_SIZE - HEADER_LEN;
+/// The magic bytes that identify a decmpfs xattr
 pub const MAGIC: [u8; 4] = *b"fpmc";
 
 pub const ZLIB_BLOCK_TABLE_START: u64 = 0x104;
 
+/// The name of the decmpfs xattr
 pub const XATTR_NAME: &CStr = {
     let bytes: &'static [u8] = b"com.apple.decmpfs\0";
     // SAFETY: bytes are static, and null terminated, without internal nulls
     unsafe { CStr::from_bytes_with_nul_unchecked(bytes) }
 };
 
+/// The location of the compressed data
+///
+/// Compressed data can be stored either in the decmpfs xattr or in the resource fork.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Storage {
+    /// The decmpfs header is followed by a single compressed block
     Xattr,
+    /// The compressed data is stored separately, in the resource fork
     ResourceFork,
 }
 
@@ -32,6 +44,7 @@ impl fmt::Display for Storage {
     }
 }
 
+/// A combination of the compressor kind, and where the compressed data is stored
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct CompressionType(u32);
@@ -131,15 +144,12 @@ impl<'a> Value<'a> {
         }
         let (header, extra_data) = data.split_at(HEADER_LEN);
         let magic = &header[0..4];
-        let compression_type = &header[4..8];
-        let uncompressed_size = &header[8..16];
+        let compression_type = u32::from_le_bytes(header[4..8].try_into().unwrap());
+        let uncompressed_size = u64::from_le_bytes(header[8..16].try_into().unwrap());
         if magic != MAGIC {
             return Err(DecodeError::BadMagic);
         }
-        let compression_type = CompressionType::from_raw_type(u32::from_le_bytes(
-            compression_type.try_into().unwrap(),
-        ));
-        let uncompressed_size = u64::from_le_bytes(uncompressed_size.try_into().unwrap());
+        let compression_type = CompressionType::from_raw_type(compression_type);
 
         Ok(Self {
             compression_type,

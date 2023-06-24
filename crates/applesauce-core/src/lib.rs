@@ -8,12 +8,16 @@ pub mod writer;
 
 pub const BLOCK_SIZE: usize = 0x10000;
 
+/// Returns the number of blocks needed to store `size` bytes.
 #[must_use]
 #[inline]
 pub const fn num_blocks(size: u64) -> u64 {
     (size + (BLOCK_SIZE as u64 - 1)) / (BLOCK_SIZE as u64)
 }
 
+/// Rounds `size` up to the nearest multiple of `block_size`.
+///
+/// If `size` is already a multiple of `block_size`, it is returned unchanged.
 #[must_use]
 #[inline]
 pub const fn round_to_block_size(size: u64, block_size: u64) -> u64 {
@@ -23,6 +27,10 @@ pub const fn round_to_block_size(size: u64, block_size: u64) -> u64 {
     }
 }
 
+/// Try to read `buf.len()` bytes from `r`, returning the number of bytes read.
+/// 
+/// This function will only return partial reads if EOF is reached before
+/// reading all bytes.
 fn try_read_all<R: Read>(mut r: R, buf: &mut [u8]) -> io::Result<usize> {
     let bulk_read_span = tracing::trace_span!(
         "try_read_all",
