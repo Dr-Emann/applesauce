@@ -28,7 +28,7 @@ pub const fn round_to_block_size(size: u64, block_size: u64) -> u64 {
 }
 
 /// Try to read `buf.len()` bytes from `r`, returning the number of bytes read.
-/// 
+///
 /// This function will only return partial reads if EOF is reached before
 /// reading all bytes.
 fn try_read_all<R: Read>(mut r: R, buf: &mut [u8]) -> io::Result<usize> {

@@ -71,7 +71,9 @@ pub struct Context {
 
 impl Drop for Context {
     fn drop(&mut self) {
-        let Ok(metadata) = self.path.symlink_metadata() else { return };
+        let Ok(metadata) = self.path.symlink_metadata() else {
+            return;
+        };
         let file_info = info::get_file_info(&self.path, &metadata);
         self.operation.stats.add_end_file(&metadata, &file_info);
     }
