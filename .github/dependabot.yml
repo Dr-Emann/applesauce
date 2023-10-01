@@ -8,3 +8,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      minor-patches:
+        dependency-type: "production"
+        update-types: ["minor", "patch"]
+      dev-dependencies:
+        dependency-type: "development"
