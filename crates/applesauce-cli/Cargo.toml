@@ -23,9 +23,9 @@ lzvn = ["applesauce/lzvn"]
 applesauce = { version = "^0.3.0", path = "../applesauce", default-features = false }
 
 cfg-if = "1.0.0"
-clap = { version = "4.0", features = ["derive"] }
+clap = { version = "4.4", features = ["derive"] }
 humansize = "2.1"
-indicatif = "0.17.1"
+indicatif = "0.17.7"
 tikv-jemallocator = "0.5"
 tracing = "0.1"
 tracing-chrome = "0.7"
