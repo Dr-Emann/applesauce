@@ -15,6 +15,7 @@ pub mod info;
 pub mod progress;
 pub use applesauce_core::compressor;
 
+pub mod block_stream;
 mod rfork_storage;
 mod scan;
 mod seq_queue;
