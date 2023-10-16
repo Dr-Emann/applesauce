@@ -33,7 +33,7 @@ libc = "0.2.149"
 memchr = "2.6"
 oneshot = "0.1.6"
 tempfile = "3.8.0"
-tracing = "0.1.36"
+tracing = "0.1.39"
 walkdir = "2.4.0"
 
 flate2 = { version = "1.0", optional = true }
