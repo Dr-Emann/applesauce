@@ -24,7 +24,7 @@ system-lzfse = ["lzfse"]
 [dependencies]
 libc = "0.2.149"
 memchr = "2.6"
-tracing = "0.1.39"
+tracing = "0.1.40"
 
 flate2 = { version = "1.0", optional = true }
 
