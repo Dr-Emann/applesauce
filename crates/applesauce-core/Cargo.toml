@@ -22,7 +22,7 @@ system-lzfse = ["lzfse"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-libc = "0.2.151"
+libc = "0.2.152"
 memchr = "2.7"
 tracing = "0.1.40"
 
