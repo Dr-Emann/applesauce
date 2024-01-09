@@ -54,18 +54,18 @@ impl TmpdirPaths {
 
     pub fn tempfile_for(&self, path: &Path, metadata: &Metadata) -> io::Result<NamedTempFile> {
         let device = metadata.st_dev();
-        match self.dirs.get(&device) {
-            Some(dir) => tempfile::Builder::new()
-                .prefix(TEMPFILE_PREFIX)
-                .tempfile_in(dir.path()),
-            None => {
-                let parent = path
-                    .parent()
-                    .ok_or_else(|| io::Error::other("expected path to have a parent"))?;
-                tempfile::Builder::new()
-                    .prefix(TEMPFILE_PREFIX)
-                    .tempfile_in(parent)
-            }
+        let dir = match self.dirs.get(&device) {
+            Some(dir) => dir.path(),
+            None => path
+                .parent()
+                .ok_or_else(|| io::Error::other("expected path to have a parent"))?,
+        };
+
+        let mut builder = tempfile::Builder::new();
+        builder.prefix(TEMPFILE_PREFIX);
+        if let Some(file_name) = path.file_name() {
+            builder.suffix(file_name);
         }
+        builder.tempfile_in(dir)
     }
 }
