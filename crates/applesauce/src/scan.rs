@@ -1,10 +1,12 @@
 use crate::progress::Progress;
+use crate::tmpdir_paths::TmpdirPaths;
 use ignore::WalkState;
+use std::collections::HashSet;
 use std::fs::FileType;
 use std::path::{Path, PathBuf};
 
 pub struct Walker<'a, P> {
-    paths: ignore::WalkParallel,
+    paths: ignore::WalkBuilder,
     progress: &'a P,
 }
 
@@ -21,13 +23,18 @@ impl<'a, P: Progress + Send + Sync> Walker<'a, P> {
         });
 
         Self {
-            paths: builder.build_parallel(),
+            paths: builder,
             progress,
         }
     }
 
-    pub fn run(self, f: impl Fn(FileType, PathBuf) + Send + Sync) {
-        self.paths.run(|| {
+    pub fn run(self, tmpdirs: &TmpdirPaths, f: impl Fn(FileType, PathBuf) + Send + Sync) {
+        let ignored_dirs: HashSet<PathBuf> = tmpdirs.paths().map(PathBuf::from).collect();
+        let mut paths = self.paths;
+        let walker = paths
+            .filter_entry(move |entry| !ignored_dirs.contains(entry.path()))
+            .build_parallel();
+        walker.run(|| {
             Box::new(|entry| {
                 handle_entry(entry, self.progress, &f);
                 WalkState::Continue
