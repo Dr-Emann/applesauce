@@ -19,6 +19,7 @@ mod rfork_storage;
 mod scan;
 mod seq_queue;
 mod threads;
+mod tmpdir_paths;
 mod xattr;
 
 use libc::c_char;

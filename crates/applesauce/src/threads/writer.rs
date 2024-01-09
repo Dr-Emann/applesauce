@@ -7,7 +7,6 @@ use std::fs::{File, Metadata};
 use std::io::{BufRead, BufReader, BufWriter, Seek, Write};
 use std::os::fd::AsRawFd;
 use std::os::macos::fs::MetadataExt;
-use std::path::Path;
 use std::sync::Arc;
 use std::{cmp, io, ptr};
 use tempfile::NamedTempFile;
@@ -104,7 +103,7 @@ impl Handler {
     ) -> io::Result<()> {
         let uncompressed_file_size = item.metadata.len();
 
-        let mut tmp_file = tmp_file_for(&item.context.path)?;
+        let mut tmp_file = tmp_file_for(&item)?;
         copy_xattrs(&item.file, tmp_file.as_file())?;
 
         let mut writer =
@@ -165,7 +164,7 @@ impl Handler {
     }
 
     fn write_uncompressed_file(&mut self, item: WorkItem) -> io::Result<()> {
-        let mut tmp_file = tmp_file_for(&item.context.path)?;
+        let mut tmp_file = tmp_file_for(&item)?;
         copy_xattrs(&item.file, tmp_file.as_file())?;
 
         let chunks =
@@ -212,13 +211,12 @@ impl WorkHandler<WorkItem> for Handler {
     }
 }
 
-#[tracing::instrument(level="debug", skip_all, err, fields(path=%path.display()))]
-fn tmp_file_for(path: &Path) -> io::Result<NamedTempFile> {
-    let mut builder = tempfile::Builder::new();
-    if let Some(name) = path.file_name() {
-        builder.prefix(name);
-    }
-    builder.tempfile_in(path.parent().ok_or(io::ErrorKind::InvalidInput)?)
+#[tracing::instrument(level="debug", skip_all, err, fields(path=%item.context.path.display()))]
+fn tmp_file_for(item: &WorkItem) -> io::Result<NamedTempFile> {
+    item.context
+        .operation
+        .tempdirs
+        .tempfile_for(&item.context.path, &item.metadata)
 }
 
 #[tracing::instrument(level = "debug", skip_all, err)]
