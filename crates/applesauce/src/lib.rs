@@ -425,6 +425,31 @@ mod tests {
         assert_eq!(old_hash, new_hash);
     }
 
+    #[test]
+    fn compress_single_file() {
+        let mut big_compressable_file = tempfile::NamedTempFile::new().unwrap();
+        big_compressable_file.write_all(&[0; 16 * 1024]).unwrap();
+        big_compressable_file.flush().unwrap();
+        let hash = recursive_hash(big_compressable_file.path());
+
+        let mut fc = FileCompressor::new();
+        fc.recursive_compress(
+            iter::once(big_compressable_file.path()),
+            Kind::default(),
+            1.0,
+            2,
+            &NoProgress,
+            true,
+        );
+
+        let new_hash = recursive_hash(big_compressable_file.path());
+        assert_eq!(hash, new_hash);
+
+        let info = info::get_recursive(big_compressable_file.path()).unwrap();
+        // These are very compressible files
+        assert!(info.compression_savings_fraction() > 0.5);
+    }
+
     #[cfg(feature = "zlib")]
     #[test]
     fn compress_zlib() {
