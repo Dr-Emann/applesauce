@@ -56,9 +56,15 @@ impl TmpdirPaths {
         let device = metadata.st_dev();
         let dir = match self.dirs.get(&device) {
             Some(dir) => dir.path(),
-            None => path
-                .parent()
-                .ok_or_else(|| io::Error::other("expected path to have a parent"))?,
+            None => {
+                let parent = path
+                    .parent()
+                    .ok_or_else(|| io::Error::other("expected path to have a parent"))?;
+                tracing::info!(
+                    "no temp dir for device {device} found, creating file in {parent:?}"
+                );
+                parent
+            }
         };
 
         let mut builder = tempfile::Builder::new();
