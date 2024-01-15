@@ -27,7 +27,7 @@ system-lzfse = ["lzfse"]
 resource-fork = { version = "^0.2.0", path = "../resource-fork" }
 applesauce-core = { version = "^0.2.0", path = "../applesauce-core" }
 
-crossbeam-channel = "0.5.10"
+crossbeam-channel = "0.5.11"
 ignore = "0.4.22"
 libc = "0.2.152"
 memchr = "2.7"
