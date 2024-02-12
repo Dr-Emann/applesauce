@@ -32,7 +32,7 @@ ignore = "0.4.22"
 libc = "0.2.153"
 memchr = "2.7"
 oneshot = "0.1.6"
-tempfile = "3.9.0"
+tempfile = "3.10.0"
 tracing = "0.1.40"
 walkdir = "2.4.0"
 
