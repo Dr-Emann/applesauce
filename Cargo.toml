@@ -23,3 +23,6 @@ lto = "fat"
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+[profile.dev.package."*"]
+opt-level = 3

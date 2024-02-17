@@ -93,6 +93,8 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "tracing-chrome",
+ "tracing-subscriber",
  "walkdir",
 ]
 

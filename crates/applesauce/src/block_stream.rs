@@ -1,57 +1,89 @@
 use futures::prelude::*;
 use std::cell::RefCell;
-use std::fs::{File, Metadata};
-use std::io::{self, Read, Write};
-use std::os::unix::fs::FileExt;
+use std::fs::Metadata;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tempfile::NamedTempFile;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
+use tokio::sync::Semaphore;
 
 use applesauce_core::compressor;
-use applesauce_core::compressor::Kind;
 use tokio::task::spawn_blocking;
-
-struct ReadAtReader<'a> {
-    file: &'a File,
-    offset: u64,
-}
-
-impl<'a> io::Read for ReadAtReader<'a> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let read_len = self.file.read_at(buf, self.offset);
-        if let Ok(len) = read_len {
-            self.offset += len as u64;
-        }
-        read_len
-    }
-}
+use tracing::{Instrument, Span};
 
 pub fn chunked_stream(file: File, chunk_size: u64) -> impl Stream<Item = io::Result<Vec<u8>>> {
-    // Read chunks with read_at
-    let file = Arc::new(file);
-    let stream = stream::iter(0..);
-    let stream = stream
-        .map(move |i| {
-            let file = Arc::clone(&file);
-            async move {
-                let offset = i * chunk_size;
+    stream::try_unfold(file, move |mut file| {
+        async move {
+            let mut buf = Vec::with_capacity(chunk_size as usize);
+            let n = (&mut file).take(chunk_size).read_to_end(&mut buf).await?;
+            Ok((n != 0).then_some((buf, file)))
+        }
+        .instrument(tracing::info_span!("read_chunk"))
+    })
+}
 
-                spawn_blocking(move || -> io::Result<Vec<u8>> {
-                    let mut data = Vec::with_capacity(chunk_size.try_into().unwrap());
-                    let reader = ReadAtReader {
-                        file: &file,
-                        offset,
-                    };
-                    reader.take(chunk_size).read_to_end(&mut data)?;
-                    Ok(data)
-                })
-                .await
-                .unwrap()
+struct StreamCompressor {
+    pool: rayon::ThreadPool,
+    sem: Arc<Semaphore>,
+}
+
+impl StreamCompressor {
+    fn new() -> Self {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .thread_name(|i| format!("stream-compressor-worker-{i}"))
+            .build()
+            .unwrap();
+        let sem = Arc::new(Semaphore::new(pool.current_num_threads() * 2));
+        Self { pool, sem }
+    }
+
+    async fn compress(
+        &self,
+        block: Vec<u8>,
+        compressor_kind: compressor::Kind,
+    ) -> io::Result<impl Future<Output = io::Result<Vec<u8>>>> {
+        let _permit = Arc::clone(&self.sem)
+            .acquire_owned()
+            .await
+            .map_err(|_| io::ErrorKind::BrokenPipe)?;
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let parent_span = Span::current();
+        self.pool.spawn(move || {
+            // Move into thread
+            let _permit = _permit;
+            let _span = tracing::info_span!(parent: parent_span, "compress_block").entered();
+            let mut result = Vec::with_capacity(block.len() + 1024);
+            let res = with_compressor(compressor_kind, |compressor| {
+                compressor.compress(
+                    unsafe {
+                        std::slice::from_raw_parts_mut(result.as_mut_ptr(), result.capacity())
+                    },
+                    &block,
+                    5,
+                )
+            });
+            match res {
+                Ok(n) => {
+                    unsafe { result.set_len(n) };
+                    let _ = tx.send(Ok(result));
+                }
+                Err(e) => {
+                    let _ = tx.send(Err(e));
+                }
             }
-        })
-        .buffered(10)
-        .take_while(|res| future::ready(res.as_ref().map_or(true, |v| !v.is_empty())));
-    stream
+        });
+        Ok(async move { rx.await.unwrap() })
+    }
+
+    pub fn compress_stream<'a>(
+        &'a self,
+        s: impl TryStream<Ok = Vec<u8>, Error = io::Error> + 'a,
+    ) -> impl Stream<Item = io::Result<Vec<u8>>> + 'a {
+        s.and_then(move |block| self.compress(block, compressor::Kind::Zlib))
+            .try_buffered(self.pool.current_num_threads() * 2)
+    }
 }
 
 thread_local! {
@@ -74,48 +106,20 @@ where
     })
 }
 
-pub async fn compress(block: Vec<u8>, compressor_kind: compressor::Kind) -> Vec<u8> {
-    let (tx, rx) = oneshot::channel();
-    #[allow(clippy::uninit_vec)]
-    rayon::spawn(move || {
-        let mut result = Vec::with_capacity(applesauce_core::BLOCK_SIZE + 1024);
-        unsafe { result.set_len(result.capacity()) };
-        let res = with_compressor(compressor_kind, |compressor| {
-            compressor.compress(&mut result, &block, 5)
-        });
-        unsafe { result.set_len(res.unwrap()) };
-        let _ = tx.send(result);
-    });
-    rx.await.unwrap()
-}
-
-pub fn compress_stream(
-    s: impl Stream<Item = io::Result<Vec<u8>>>,
-) -> impl Stream<Item = io::Result<Vec<u8>>> {
-    s.map(|data| async move {
-        match data {
-            Ok(data) => Ok(compress(data, Kind::Zlib).await),
-            Err(e) => Err(e),
-        }
-    })
-    .buffered(
-        std::thread::available_parallelism()
-            .map(|x| x.get())
-            .unwrap_or(1),
-    )
-}
-
+#[tracing::instrument(skip_all)]
 pub async fn compress_file(path: PathBuf, metadata: Metadata) -> io::Result<()> {
-    let file = File::open(&path)?;
+    let file = File::open(&path).await?;
     let stream = chunked_stream(file, applesauce_core::BLOCK_SIZE as u64);
-    let stream = compress_stream(stream);
+    let compressor = StreamCompressor::new();
+    let stream = compressor.compress_stream(stream);
     tokio::pin!(stream);
 
     let mut tmp_file = tmp_file_for(&path)?;
 
-    while let Some(block) = stream.next().await {
-        let block = block?;
+    while let Some(block) = stream.try_next().await? {
         let (res, t) = spawn_blocking(move || {
+            use std::io::Write;
+
             let res = tmp_file.write_all(&block);
             (res, tmp_file)
         })
@@ -125,7 +129,9 @@ pub async fn compress_file(path: PathBuf, metadata: Metadata) -> io::Result<()> 
         tmp_file = t;
     }
 
-    tmp_file.persist(path.with_extension("cmp"))?;
+    spawn_blocking(move || tmp_file.persist(path.with_extension("cmp")))
+        .await
+        .unwrap()?;
 
     Ok(())
 }
