@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tracing::instrument::WithSubscriber;
 use tracing_chrome::ChromeLayerBuilder;
+use tracing_subscriber::fmt;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -37,7 +38,10 @@ async fn main() {
         layer
     });
 
-    tracing_subscriber::registry().with(chrome_layer).init();
+    tracing_subscriber::registry()
+        .with(chrome_layer)
+        // .with(fmt::layer().with_span_events(FmtSpan::FULL))
+        .init();
 
     let start = Instant::now();
     let path = PathBuf::from("/tmp/dir/zeros");
