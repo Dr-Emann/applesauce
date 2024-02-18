@@ -9,12 +9,12 @@ use std::sync::atomic::AtomicU64;
 use std::sync::{atomic, Arc};
 use tempfile::NamedTempFile;
 use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::{Notify, Semaphore};
+use tokio::io::AsyncWriteExt;
+use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
 
 use applesauce_core::{compressor, num_blocks};
 use tokio::task::spawn_blocking;
-use tracing::{debug_span, info_span, Instrument, Span};
+use tracing::{info_span, Span};
 
 struct ReadAtReader<'a> {
     file: &'a std::fs::File,
@@ -29,34 +29,6 @@ impl<'a> io::Read for ReadAtReader<'a> {
         }
         read_len
     }
-}
-
-pub fn chunked_stream(
-    file: std::fs::File,
-    chunk_size: u64,
-) -> impl Stream<Item = io::Result<Vec<u8>>> {
-    // Read chunks with read_at
-    let file = Arc::new(file);
-    stream::iter(0..)
-        .map(move |i| {
-            let file = Arc::clone(&file);
-            let offset = i * chunk_size;
-            spawn_blocking(move || -> io::Result<Vec<u8>> {
-                let _span = info_span!("reading block", i).entered();
-                use std::io::prelude::*;
-
-                let mut data = Vec::with_capacity(chunk_size.try_into().unwrap());
-                let reader = ReadAtReader {
-                    file: &file,
-                    offset,
-                };
-                reader.take(chunk_size).read_to_end(&mut data)?;
-                Ok(data)
-            })
-            .unwrap_or_else(|e| panic!("spawn_blocking failed: {:?}", e))
-        })
-        .buffered(10)
-        .try_take_while(|block| future::ready(Ok(!block.is_empty())))
 }
 
 struct BlockLimiter {
@@ -143,6 +115,13 @@ impl OutstandingBlocks {
     }
 }
 
+struct InputBlock {
+    index: u64,
+    data: Vec<u8>,
+    #[allow(dead_code)]
+    permit: OwnedSemaphorePermit,
+}
+
 impl Drop for OutstandingBlocks {
     fn drop(&mut self) {
         self.block_limiter.return_blocks(self.count);
@@ -168,6 +147,44 @@ impl StreamCompressor {
             sem,
             block_limit: Arc::new(BlockLimiter::new(target_blocks as u64)),
         }
+    }
+
+    pub fn chunked_stream(
+        &self,
+        file: std::fs::File,
+        chunk_size: u64,
+    ) -> impl Stream<Item = io::Result<InputBlock>> + '_ {
+        // Read chunks with read_at
+        let file = Arc::new(file);
+        stream::iter(0..)
+            .map(move |i| {
+                let file = Arc::clone(&file);
+                let offset = i * chunk_size;
+                let parent_span = Span::current();
+                async move {
+                    let permit = self.get_permit().await?;
+                    spawn_blocking(move || -> io::Result<InputBlock> {
+                        let _span = info_span!(parent: parent_span, "reading block", i).entered();
+                        use std::io::prelude::*;
+
+                        let mut data = Vec::with_capacity(chunk_size.try_into().unwrap());
+                        let reader = ReadAtReader {
+                            file: &file,
+                            offset,
+                        };
+                        reader.take(chunk_size).read_to_end(&mut data)?;
+                        Ok(InputBlock {
+                            index: i,
+                            data,
+                            permit,
+                        })
+                    })
+                    .await
+                    .unwrap()
+                }
+            })
+            .buffered(100)
+            .try_take_while(|block| future::ready(Ok(!block.data.is_empty())))
     }
 
     async fn compress_file(
@@ -202,7 +219,7 @@ impl StreamCompressor {
             .expect("write_file task panicked")
         };
 
-        let stream = chunked_stream(file.into_std().await, applesauce_core::BLOCK_SIZE as u64);
+        let stream = self.chunked_stream(file.into_std().await, applesauce_core::BLOCK_SIZE as u64);
         let stream = self.compress_stream(stream);
         let forward_task = async {
             let mut stream = pin!(stream);
@@ -220,29 +237,31 @@ impl StreamCompressor {
         Ok(())
     }
 
+    async fn get_permit(&self) -> io::Result<OwnedSemaphorePermit> {
+        Arc::clone(&self.sem)
+            .acquire_owned()
+            .await
+            .map_err(|_| io::ErrorKind::BrokenPipe.into())
+    }
+
     async fn compress(
         &self,
-        block: Vec<u8>,
+        block: InputBlock,
         compressor_kind: compressor::Kind,
-    ) -> io::Result<impl Future<Output = io::Result<Vec<u8>>>> {
-        let _permit = Arc::clone(&self.sem)
-            .acquire_owned()
-            .instrument(debug_span!("acquire_compression_permit"))
-            .await
-            .map_err(|_| io::ErrorKind::BrokenPipe)?;
+    ) -> io::Result<Vec<u8>> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let parent_span = Span::current();
         self.pool.spawn(move || {
             // Move into thread
-            let _permit = _permit;
-            let _span = tracing::info_span!(parent: parent_span, "compress_block").entered();
-            let mut result = Vec::with_capacity(block.len() + 1024);
+            let _span = tracing::info_span!(parent: parent_span, "compress_block", i = block.index)
+                .entered();
+            let mut result = Vec::with_capacity(block.data.len() + 1024);
             let res = with_compressor(compressor_kind, |compressor| {
                 compressor.compress(
                     unsafe {
                         std::slice::from_raw_parts_mut(result.as_mut_ptr(), result.capacity())
                     },
-                    &block,
+                    &block.data,
                     5,
                 )
             });
@@ -256,15 +275,15 @@ impl StreamCompressor {
                 }
             }
         });
-        Ok(async move { rx.await.unwrap() })
+        rx.await.expect("compressor thread panicked")
     }
 
     pub fn compress_stream<'a>(
         &'a self,
-        s: impl TryStream<Ok = Vec<u8>, Error = io::Error> + 'a,
+        s: impl Stream<Item = io::Result<InputBlock>> + 'a,
     ) -> impl Stream<Item = io::Result<Vec<u8>>> + 'a {
-        s.and_then(move |block| self.compress(block, compressor::Kind::Lzfse))
-            .try_buffered(self.pool.current_num_threads() * 2)
+        s.map_ok(move |block| self.compress(block, compressor::Kind::Lzfse))
+            .try_buffered(64)
     }
 }
 
@@ -312,7 +331,7 @@ where
 pub async fn compress_file(path: PathBuf, metadata: Metadata) -> io::Result<()> {
     let compressor = StreamCompressor::new();
     info_span!("setting up pool").in_scope(|| {
-        compressor.pool.broadcast(|b| {
+        compressor.pool.broadcast(|_| {
             COMPRESSORS.with(|compressors| {
                 let mut compressors = compressors.borrow_mut();
                 let idx = compressor::Kind::Lzfse as usize;

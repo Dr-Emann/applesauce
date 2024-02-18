@@ -3,10 +3,7 @@ use std::io;
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use tracing::instrument::WithSubscriber;
 use tracing_chrome::ChromeLayerBuilder;
-use tracing_subscriber::fmt;
-use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
