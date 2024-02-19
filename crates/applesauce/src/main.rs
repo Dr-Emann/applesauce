@@ -1,8 +1,15 @@
+use applesauce::block_stream;
+use futures::future::{join_all, try_join_all};
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use std::fs::File;
 use std::io;
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
+use std::pin::pin;
+use std::sync::Arc;
 use std::time::Instant;
+use tokio::select;
 use tracing_chrome::ChromeLayerBuilder;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -41,10 +48,16 @@ async fn main() {
         .init();
 
     let start = Instant::now();
-    let path = PathBuf::from("/tmp/dir/zeros");
-    let metadata = tokio::fs::metadata(&path).await.unwrap();
-    applesauce::block_stream::compress_file(path, metadata)
-        .await
-        .unwrap();
+    let compressor = Arc::new(block_stream::StreamCompressor::new());
+    let mut handles = Vec::new();
+    for path in &["/tmp/dir/zeros", "/tmp/dir/zeros2"] {
+        let path = Arc::from(Path::new(path));
+        let metadata = tokio::fs::metadata(&path).await.unwrap();
+        let compressor = Arc::clone(&compressor);
+        handles.push(tokio::spawn(async move {
+            compressor.compress_file(path, metadata).await
+        }));
+    }
+    let results = try_join_all(handles).await.unwrap();
     dbg!(start.elapsed());
 }
