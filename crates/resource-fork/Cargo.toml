@@ -8,8 +8,13 @@ repository = "https://github.com/Dr-Emann/applesauce"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bench]]
+name = "compare_impls"
+harness = false
+
 [dependencies]
 libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3.9.0"
+criterion = { version = "0.5.1", features = ["html_reports"] }
