@@ -131,6 +131,15 @@ impl super::CompressorImpl for Zlib {
             u32::try_from(writer.stream_position()?).map_err(|_| io::ErrorKind::InvalidInput)?;
         writer.write_all(&ZLIB_TRAILER)?;
 
+        // This is logically a non-modifying operation, even if it takes &mut self, and can fail
+        #[allow(clippy::debug_assert_with_mut_call)]
+        {
+            debug_assert_eq!(
+                writer.stream_position()?,
+                u64::from(data_end) + Self::extra_size(block_count.into())
+            );
+        }
+
         writer.rewind()?;
         writer.write_all(&header(data_end))?;
 

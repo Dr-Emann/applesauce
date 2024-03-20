@@ -21,7 +21,6 @@ mod zlib;
 pub(crate) trait CompressorImpl {
     /// The offset to start data at, for the specified number of blocks
     #[must_use]
-
     fn header_size(block_count: u64) -> u64;
 
     #[must_use]
