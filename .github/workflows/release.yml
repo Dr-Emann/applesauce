@@ -40,6 +40,8 @@ on:
   push:
     tags:
       - '*-?v[0-9]+*'
+  workflow_dispatch:
+
 
 jobs:
   # Create the Github Release™ so the packages have something to be uploaded to
@@ -85,9 +87,9 @@ jobs:
       matrix:
         # For these target platforms
         include:
-        - os: macos-11
-          dist-args: --artifacts=local --target=aarch64-apple-darwin --target=x86_64-apple-darwin
-          install-dist: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.0.7/cargo-dist-installer.sh | sh
+          - os: macos-11
+            dist-args: --artifacts=local --target=aarch64-apple-darwin --target=x86_64-apple-darwin
+            install-dist: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.0.7/cargo-dist-installer.sh | sh
 
     runs-on: ${{ matrix.os }}
     env:
@@ -119,7 +121,7 @@ jobs:
   # Mark the Github Release™ as a non-draft now that everything has succeeded!
   publish-release:
     # Only run after all the other tasks, but it's ok if upload-artifacts was skipped
-    needs: [create-release, upload-artifacts]
+    needs: [ create-release, upload-artifacts ]
     if: ${{ always() && needs.create-release.result == 'success' && (needs.upload-artifacts.result == 'skipped' || needs.upload-artifacts.result == 'success') }}
     runs-on: ubuntu-latest
     env:
