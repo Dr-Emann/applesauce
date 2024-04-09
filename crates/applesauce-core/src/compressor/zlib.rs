@@ -136,7 +136,7 @@ impl super::CompressorImpl for Zlib {
         {
             debug_assert_eq!(
                 writer.stream_position()?,
-                u64::from(data_end) + Self::extra_size(block_count.into())
+                u64::from(data_end) + Self::trailer_size()
             );
         }
 
@@ -207,7 +207,7 @@ mod tests {
 
     #[test]
     fn extra_size() {
-        assert_eq!(Zlib::extra_size(0), 0x13A);
+        assert_eq!(Zlib::header_size(0) + Zlib::trailer_size(), 0x13A);
     }
 
     #[test]
@@ -222,7 +222,10 @@ mod tests {
 
         Zlib::finish(&mut cursor, block_sizes).unwrap();
         let len = cursor.get_ref().len() as u64;
-        assert_eq!(len, 110 + Zlib::extra_size(block_sizes.len() as u64));
+        assert_eq!(
+            len,
+            110 + Zlib::header_size(block_sizes.len() as u64) + Zlib::trailer_size()
+        );
 
         let result = cursor.get_ref();
         assert_eq!(result[..16], header(data_end));

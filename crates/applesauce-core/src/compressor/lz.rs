@@ -208,7 +208,8 @@ mod tests {
         let len = cursor.get_ref().len() as u64;
         assert_eq!(
             len,
-            110 + Lz::<FakeLzImpl>::extra_size(block_sizes.len() as u64)
+            110 + Lz::<FakeLzImpl>::header_size(block_sizes.len() as u64)
+                + Lz::<FakeLzImpl>::trailer_size()
         );
 
         cursor.set_position(0);

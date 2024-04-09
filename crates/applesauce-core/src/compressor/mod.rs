@@ -28,15 +28,6 @@ pub(crate) trait CompressorImpl {
         0
     }
 
-    /// The extra size required to store `block_count` blocks, other than the data itself
-    ///
-    /// This defaults to `blocks_start`, but can be overridden if the compressor requires more space
-    /// after the data as well
-    #[must_use]
-    fn extra_size(block_count: u64) -> u64 {
-        Self::header_size(block_count) + Self::trailer_size()
-    }
-
     fn compress(&mut self, dst: &mut [u8], src: &[u8], level: u32) -> io::Result<usize>;
     fn decompress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize>;
 
