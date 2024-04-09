@@ -322,8 +322,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::progress::{Progress, Task};
-    use applesauce_core::compressor;
+    use crate::progress::Task;
     use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::symlink;
     use std::{fs, iter};
