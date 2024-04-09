@@ -15,7 +15,7 @@ targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
 # Publish jobs to run in CI
 pr-run-mode = "plan"
 # Allow our custom change to release.yml
-allow-dirty = true
+allow-dirty = ["ci"]
 
 [profile.release]
 debug = true
