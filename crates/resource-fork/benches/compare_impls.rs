@@ -15,7 +15,6 @@ fn criterion_benchmark(c: &mut Criterion) {
                 let mut rsrc_file = File::create(file.path().join("..namedfork/rsrc")).unwrap();
                 rsrc_file.write_all(&data).unwrap();
                 rsrc_file.flush().unwrap();
-                drop(rsrc_file);
             },
             // Limit the number of open files
             BatchSize::LargeInput,
@@ -28,7 +27,6 @@ fn criterion_benchmark(c: &mut Criterion) {
                 let mut rsrc_file = ResourceFork::new(file.as_file());
                 rsrc_file.write_all(&data).unwrap();
                 rsrc_file.flush().unwrap();
-                drop(rsrc_file);
             },
             // Limit the number of open files
             BatchSize::LargeInput,
