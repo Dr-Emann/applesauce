@@ -10,7 +10,24 @@ algorithms used by HFS+/APFS: LZFSE, LZVN, and ZLIB.
 
 ## Installation
 
-### Building with Cargo
+### Install via Homebrew
+
+To install Applesauce using Homebrew, run the following command:
+
+```console
+brew install Dr-Emann/homebrew-tap/applesauce
+```
+
+### Install prebuilt binaries via shell script
+
+```console
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/Dr-Emann/applesauce/releases/latest/download/applesauce-cli-installer.sh | sh
+```
+
+### Manual build with Cargo
+
+<details>
+<summary>Details</summary>
 
 To install Applesauce using Cargo, follow these steps:
 
@@ -19,9 +36,7 @@ To install Applesauce using Cargo, follow these steps:
 3. In the project directory, run `cargo build --release` to build the program.
 4. The built binary can be found in the `target/release` directory.
 
-### Installing from GitHub Releases
-
-Alternatively, you can download pre-built binaries from the [GitHub releases page](https://github.com/Dr-Emann/applesauce/releases).
+</details>
 
 ## Usage
 
@@ -31,19 +46,18 @@ To use Applesauce, run the following command:
 applesauce [compress|decompress|info] file/directory
 ```
 
-
 The options are as follows:
 
 - `compress`: Compresses the specified file/directory using one of three compression algorithms (LZFSE, LZVN, or ZLIB).
 - `decompress`: Decompresses the specified file/directory.
-- `info`: Prints information about the specified compressed file/directory, including the compression ratio and compression algorithm used.
+- `info`: Prints information about the specified compressed file/directory, including the compression ratio and
+  compression algorithm used.
 
 For example, to compress a file named `example.txt` using the ZLIB compression algorithm, you would run:
 
 ```console
 applesauce compress -c ZLIB example.txt
 ```
-
 
 ## Features
 
@@ -97,7 +111,7 @@ user-friendly experience than afsctool's sparse output.
 
 #### Better Compression With Many Small Files
 
-afsctool will compress a file which fits in the xattr after compression, even 
+afsctool will compress a file which fits in the xattr after compression, even
 if doing so actually adds more overhead than leaving the file uncompressed.
 Applesauce will not compress a file if it would result in a larger file.
 
