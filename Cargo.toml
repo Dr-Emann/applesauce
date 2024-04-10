@@ -14,8 +14,14 @@ installers = ["shell", "homebrew"]
 targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
 # Publish jobs to run in CI
 pr-run-mode = "plan"
-# Allow our custom change to release.yml
+# Skip checking whether the specified configuration files are up to date
 allow-dirty = ["ci"]
+# A GitHub repo to push Homebrew formulas to
+tap = "Dr-Emann/homebrew-tap"
+# Publish jobs to run in CI
+publish-jobs = ["homebrew"]
+# Customize the Homebrew formula name
+formula = "applesauce"
 
 [profile.release]
 debug = true
