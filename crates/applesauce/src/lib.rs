@@ -465,7 +465,7 @@ mod tests {
 
         let mut fc = FileCompressor::new();
         fc.recursive_compress(
-            [inner_dir.as_path(), inner_file_path.as_path()].into_iter(),
+            [inner_dir.as_path(), inner_file_path.as_path()],
             Kind::default(),
             1.0,
             2,
