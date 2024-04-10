@@ -45,7 +45,22 @@ impl TmpdirPaths {
         match self.dirs.entry(device) {
             Entry::Occupied(_) => {}
             Entry::Vacant(entry) => {
-                let dir = TempDir::with_prefix_in(TEMPDIR_PREFIX, dst)?;
+                let tmpdir_parent = if metadata.is_dir() {
+                    dst
+                } else {
+                    let parent = dst
+                        .parent()
+                        .ok_or_else(|| io::Error::other("path to file has no parent?"))?;
+
+                    if parent.metadata()?.st_dev() != device {
+                        return Err(io::Error::other(
+                            "parent directory of file is on a different device?",
+                        ));
+                    }
+
+                    parent
+                };
+                let dir = TempDir::with_prefix_in(TEMPDIR_PREFIX, tmpdir_parent)?;
                 entry.insert(dir);
             }
         }

@@ -426,14 +426,14 @@ mod tests {
 
     #[test]
     fn compress_single_file() {
-        let mut big_compressable_file = tempfile::NamedTempFile::new().unwrap();
-        big_compressable_file.write_all(&[0; 16 * 1024]).unwrap();
-        big_compressable_file.flush().unwrap();
-        let hash = recursive_hash(big_compressable_file.path());
+        let mut compressible_file = tempfile::NamedTempFile::new().unwrap();
+        compressible_file.write_all(&[0; 16 * 1024]).unwrap();
+        compressible_file.flush().unwrap();
+        let hash = recursive_hash(compressible_file.path());
 
         let mut fc = FileCompressor::new();
         fc.recursive_compress(
-            iter::once(big_compressable_file.path()),
+            iter::once(compressible_file.path()),
             Kind::default(),
             1.0,
             2,
@@ -441,10 +441,42 @@ mod tests {
             true,
         );
 
-        let new_hash = recursive_hash(big_compressable_file.path());
+        let new_hash = recursive_hash(compressible_file.path());
         assert_eq!(hash, new_hash);
 
-        let info = info::get_recursive(big_compressable_file.path()).unwrap();
+        let info = info::get_recursive(compressible_file.path()).unwrap();
+        // These are very compressible files
+        assert!(info.compression_savings_fraction() > 0.5);
+    }
+
+    #[test]
+    fn compress_dir_and_file() {
+        let outer_dir = TempDir::new().unwrap();
+        let inner_dir = outer_dir.path().join("inner");
+        let inner_file_path = inner_dir.join("file");
+        fs::create_dir(&inner_dir).unwrap();
+
+        let mut compressible_file = File::create(&inner_file_path).unwrap();
+        compressible_file.write_all(&[0; 16 * 1024]).unwrap();
+        compressible_file.flush().unwrap();
+
+        populate_dir(&inner_dir);
+        let hash = recursive_hash(outer_dir.path());
+
+        let mut fc = FileCompressor::new();
+        fc.recursive_compress(
+            [inner_dir.as_path(), inner_file_path.as_path()].into_iter(),
+            Kind::default(),
+            1.0,
+            2,
+            &NoProgress,
+            false,
+        );
+
+        let new_hash = recursive_hash(outer_dir.path());
+        assert_eq!(hash, new_hash);
+
+        let info = info::get_recursive(outer_dir.path()).unwrap();
         // These are very compressible files
         assert!(info.compression_savings_fraction() > 0.5);
     }

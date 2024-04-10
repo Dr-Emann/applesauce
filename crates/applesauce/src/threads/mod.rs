@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::{fmt, io, mem};
+use tracing::warn;
 
 pub mod compressing;
 pub mod reader;
@@ -141,9 +142,14 @@ impl BackgroundThreads {
         let (finished_stats, finished_stats_rx) = crossbeam_channel::bounded(1);
         let mut operation = OperationContext::new(mode, finished_stats, verify);
         let walker = scan::Walker::new(
-            paths
-                .into_iter()
-                .inspect(|path| operation.add_dst(path).unwrap()),
+            paths.into_iter().inspect(|path| {
+                if let Err(e) = operation.add_dst(path) {
+                    warn!(
+                        "failed to find a temp directory for {}: {e}",
+                        path.display()
+                    );
+                }
+            }),
             progress,
         );
         let operation = Arc::new(operation);
