@@ -1,5 +1,6 @@
 use crate::info::FileCompressionState;
 use crate::progress::{self, Progress, SkipReason};
+use crate::scan::ResetTimes;
 use crate::tmpdir_paths::TmpdirPaths;
 use crate::{info, scan, Stats};
 use applesauce_core::compressor;
@@ -7,7 +8,7 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use std::{fmt, io, mem};
+use std::{fmt, mem};
 use tracing::warn;
 
 pub mod compressing;
@@ -48,19 +49,19 @@ pub struct OperationContext {
 }
 
 impl OperationContext {
-    fn new(mode: Mode, finished_stats: crossbeam_channel::Sender<Stats>, verify: bool) -> Self {
+    fn new(
+        mode: Mode,
+        finished_stats: crossbeam_channel::Sender<Stats>,
+        tempdirs: TmpdirPaths,
+        verify: bool,
+    ) -> Self {
         Self {
             mode,
             stats: Stats::default(),
             finished_stats,
-            tempdirs: TmpdirPaths::new(),
+            tempdirs,
             verify,
         }
-    }
-
-    fn add_dst(&mut self, dst: &Path) -> io::Result<()> {
-        let metadata = dst.metadata()?;
-        self.tempdirs.add_dst(dst, &metadata)
     }
 }
 
@@ -76,6 +77,7 @@ pub struct Context {
     path: PathBuf,
     orig_size: u64,
     progress: Box<dyn progress::Task + Send + Sync>,
+    _parent_reset: Option<Arc<ResetTimes>>,
 }
 
 impl Drop for Context {
@@ -140,23 +142,25 @@ impl BackgroundThreads {
         P::Task: Send + Sync + 'static,
     {
         let (finished_stats, finished_stats_rx) = crossbeam_channel::bounded(1);
-        let mut operation = OperationContext::new(mode, finished_stats, verify);
-        let walker = scan::Walker::new(
-            paths.into_iter().inspect(|path| {
-                if let Err(e) = operation.add_dst(path) {
-                    warn!(
-                        "failed to find a temp directory for {}: {e}",
-                        path.display()
-                    );
-                }
-            }),
-            progress,
-        );
-        let operation = Arc::new(operation);
+        let mut tmpdirs = TmpdirPaths::new();
+        let mut walker = scan::Walker::new(progress);
+        for path in paths {
+            let Ok(metadata) = path.metadata() else {
+                continue;
+            };
+            if let Err(e) = tmpdirs.add_dst(path, &metadata) {
+                warn!(
+                    "failed to find a temp directory for {}: {e}",
+                    path.display()
+                );
+            }
+            walker.add_path(path);
+        }
+        let operation = Arc::new(OperationContext::new(mode, finished_stats, tmpdirs, verify));
         let stats = &operation.stats;
         let chan = self.reader.chan();
 
-        walker.run(&operation.tempdirs, |file_type, path| {
+        walker.run(&operation.tempdirs, |file_type, path, dir_reset| {
             // We really only want to deal with files, not symlinks to files, or fifos, etc.
             #[allow(clippy::filetype_is_file)]
             if !file_type.is_file() {
@@ -190,6 +194,7 @@ impl BackgroundThreads {
                         path,
                         progress: inner_progress,
                         orig_size: metadata.len(),
+                        _parent_reset: dir_reset,
                     }),
                     metadata,
                 })
