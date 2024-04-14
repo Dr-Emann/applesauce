@@ -1,67 +1,116 @@
 use crate::progress::Progress;
 use crate::tmpdir_paths::TmpdirPaths;
-use ignore::WalkState;
 use std::collections::HashSet;
+use std::ffi::CString;
 use std::fs::FileType;
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+#[derive(Debug)]
+pub struct ResetTimes {
+    dir_path: CString,
+    metadata: std::fs::Metadata,
+}
+
+impl ResetTimes {
+    fn new(path: &Path, metadata: std::fs::Metadata) -> Self {
+        Self {
+            dir_path: CString::new(path.as_os_str().as_bytes()).unwrap(),
+            metadata,
+        }
+    }
+}
+
+impl Drop for ResetTimes {
+    fn drop(&mut self) {
+        let _ = crate::reset_times(self.dir_path.as_c_str(), &self.metadata);
+    }
+}
+
+fn walk_dir_over(
+    path: &Path,
+    ignored_dirs: Arc<HashSet<PathBuf>>,
+) -> jwalk::WalkDirGeneric<((), State)> {
+    let walker = jwalk::WalkDirGeneric::new(path);
+    walker.process_read_dir(
+        move |_depth,
+              path: &Path,
+              _state,
+              entries: &mut Vec<jwalk::Result<jwalk::DirEntry<((), State)>>>| {
+            let reset_times: State = path
+                .metadata()
+                .ok()
+                .map(|metadata| Arc::new(ResetTimes::new(path, metadata)));
+            // Remove ignored directories from the list of entries.
+            // Also, add the client state to the entry.
+            entries.retain_mut(|entry| {
+                if let Ok(entry) = entry {
+                    if entry.file_type().is_dir() && ignored_dirs.contains(entry.path().as_path()) {
+                        return false;
+                    }
+                    #[allow(clippy::filetype_is_file)]
+                    if entry.file_type().is_file() {
+                        entry.client_state.clone_from(&reset_times);
+                    }
+                }
+                true
+            });
+        },
+    )
+}
+
+type State = Option<Arc<ResetTimes>>;
 
 pub struct Walker<'a, P> {
-    paths: ignore::WalkBuilder,
+    paths: Vec<&'a Path>,
     progress: &'a P,
 }
 
 impl<'a, P: Progress + Send + Sync> Walker<'a, P> {
-    pub fn new<'b>(paths: impl IntoIterator<Item = &'b Path>, progress: &'a P) -> Self {
-        let mut paths = paths.into_iter();
-        let first = paths.next().expect("No paths given");
-        let mut builder = ignore::WalkBuilder::new(first);
-        // We don't want to ignore hidden, from gitignore, etc
-        builder.standard_filters(false);
-        // Add the rest of the paths
-        paths.for_each(|p| {
-            builder.add(p);
-        });
-
+    pub fn new(progress: &'a P) -> Self {
         Self {
-            paths: builder,
+            paths: Vec::new(),
             progress,
         }
     }
 
-    pub fn run(self, tmpdirs: &TmpdirPaths, f: impl Fn(FileType, PathBuf) + Send + Sync) {
-        let ignored_dirs: HashSet<PathBuf> = tmpdirs.paths().map(PathBuf::from).collect();
-        let mut paths = self.paths;
-        let walker = paths
-            .filter_entry(move |entry| !ignored_dirs.contains(entry.path()))
-            .build_parallel();
-        walker.run(|| {
-            Box::new(|entry| {
-                handle_entry(entry, self.progress, &f);
-                WalkState::Continue
-            })
-        })
+    pub fn add_path(&mut self, path: &'a Path) {
+        self.paths.push(path);
     }
-}
 
-fn handle_entry(
-    entry: Result<ignore::DirEntry, ignore::Error>,
-    progress: &impl Progress,
-    f: &impl Fn(FileType, PathBuf),
-) {
-    let entry = match entry {
-        Ok(entry) => entry,
-        Err(e) => {
-            progress.error(Path::new("?"), &format!("error scanning: {}", e));
-            return;
+    pub fn run(
+        self,
+        tmpdirs: &TmpdirPaths,
+        f: impl Fn(FileType, PathBuf, Option<Arc<ResetTimes>>) + Send + Sync,
+    ) {
+        let ignored_dirs: Arc<HashSet<PathBuf>> =
+            Arc::new(tmpdirs.paths().map(PathBuf::from).collect());
+        for path in self.paths {
+            let walker = walk_dir_over(path, Arc::clone(&ignored_dirs));
+            for entry in walker {
+                let mut entry = match entry {
+                    Ok(entry) => entry,
+                    Err(e) => {
+                        self.progress
+                            .error(Path::new("?"), &format!("error scanning: {e}"));
+                        continue;
+                    }
+                };
+                let path = entry.path();
+                let metadata = match entry.metadata() {
+                    Ok(metadata) => metadata,
+                    Err(e) => {
+                        self.progress
+                            .error(&path, &format!("error getting metadata: {e}"));
+                        continue;
+                    }
+                };
+                if metadata.is_dir() {
+                    continue;
+                }
+                f(metadata.file_type(), path, entry.client_state.take())
+            }
         }
-    };
-    let file_type = entry
-        .file_type()
-        .expect("Only stdin should have no file_type");
-
-    if file_type.is_dir() {
-        return;
     }
-
-    f(file_type, entry.into_path());
 }

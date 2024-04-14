@@ -8,7 +8,6 @@ use std::os::macos::fs::MetadataExt as _;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt as _;
 use std::path::Path;
-use walkdir::WalkDir;
 
 pub use applesauce_core::decmpfs::CompressionType;
 
@@ -85,13 +84,13 @@ impl AfscFolderInfo {
 
 pub fn get_recursive(path: &Path) -> io::Result<AfscFolderInfo> {
     let mut result = AfscFolderInfo::default();
-    for entry in WalkDir::new(path) {
+    for entry in jwalk::WalkDir::new(path) {
         let entry = entry?;
         let file_type = entry.file_type();
 
         #[allow(clippy::filetype_is_file)]
         if file_type.is_file() {
-            let info = get(entry.path())?;
+            let info = get(&entry.path())?;
             result.num_files += 1;
             if info.is_compressed {
                 result.num_compressed_files += 1;

@@ -95,9 +95,12 @@ fn vol_supports_compression_cap(mnt_root: &CStr) -> io::Result<bool> {
     Ok(vol_attrs.vol_attrs.valid[IDX] & vol_attrs.vol_attrs.capabilities[IDX] & MASK != 0)
 }
 
-#[tracing::instrument(level = "debug", skip_all)]
-fn reset_times(file: &File, metadata: &Metadata) -> io::Result<()> {
-    let times: [libc::timespec; 2] = [
+trait TimeReset {
+    fn reset_times(&self, metadata: &Metadata) -> io::Result<()>;
+}
+
+fn metadata_times(metadata: &Metadata) -> [libc::timespec; 2] {
+    [
         libc::timespec {
             tv_sec: metadata.atime(),
             tv_nsec: metadata.atime_nsec(),
@@ -106,14 +109,39 @@ fn reset_times(file: &File, metadata: &Metadata) -> io::Result<()> {
             tv_sec: metadata.mtime(),
             tv_nsec: metadata.mtime_nsec(),
         },
-    ];
-    // SAFETY: fd is valid, times points to an array of 2 timespec values
-    let rc = unsafe { libc::futimens(file.as_raw_fd(), times.as_ptr()) };
-    if rc == 0 {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
+    ]
+}
+
+impl TimeReset for CStr {
+    fn reset_times(&self, metadata: &Metadata) -> io::Result<()> {
+        let times = metadata_times(metadata);
+        // SAFETY: fd is valid, times points to an array of 2 timespec values
+        let rc = unsafe { libc::utimensat(libc::AT_FDCWD, self.as_ptr(), times.as_ptr(), 0) };
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
     }
+}
+
+impl TimeReset for File {
+    fn reset_times(&self, metadata: &Metadata) -> io::Result<()> {
+        let times = metadata_times(metadata);
+        // SAFETY: fd is valid, times points to an array of 2 timespec values
+        let rc = unsafe { libc::futimens(self.as_raw_fd(), times.as_ptr()) };
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
+}
+
+#[tracing::instrument(level = "debug", skip_all)]
+#[inline]
+fn reset_times<F: TimeReset + ?Sized>(f: &F, metadata: &Metadata) -> io::Result<()> {
+    f.reset_times(metadata)
 }
 
 #[tracing::instrument(level = "trace", skip_all, fields(flags), err)]
@@ -323,8 +351,9 @@ where
 mod tests {
     use super::*;
     use crate::progress::Task;
-    use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::symlink;
+    use std::path::PathBuf;
+    use std::time::SystemTime;
     use std::{fs, iter};
     use tempfile::TempDir;
     use walkdir::WalkDir;
@@ -346,18 +375,51 @@ mod tests {
         }
     }
 
-    fn recursive_hash(dir: &Path) -> Vec<u8> {
-        use sha2::Digest;
-        let mut hasher = sha2::Sha512::new();
+    #[derive(Debug)]
+    struct EntryInfo {
+        path: PathBuf,
+        modified_time: SystemTime,
+        content: Option<Vec<u8>>,
+    }
 
+    fn assert_entries_equal(old: &[EntryInfo], new: &[EntryInfo]) {
+        assert_eq!(old.len(), new.len());
+        for (old, new) in old.iter().zip(new.iter()) {
+            assert_eq!(old.path, new.path);
+            assert_eq!(
+                old.modified_time,
+                new.modified_time,
+                "modified time mismatch at {}",
+                old.path.display()
+            );
+            assert_eq!(
+                old.content,
+                new.content,
+                "content mismatch at {}",
+                old.path.display()
+            );
+        }
+    }
+
+    fn recursive_read(dir: &Path) -> Vec<EntryInfo> {
+        let mut result = Vec::new();
         for item in WalkDir::new(dir).sort_by_file_name() {
             let item = item.unwrap();
-            if !item.file_type().is_dir() {
-                hasher.update(item.path().as_os_str().as_bytes());
-                hasher.update(fs::read(item.path()).unwrap());
-            }
+            let metadata = item.metadata().unwrap();
+            let modified_time = metadata.modified().unwrap();
+            let content = if !item.file_type().is_dir() {
+                Some(fs::read(item.path()).unwrap())
+            } else {
+                None
+            };
+
+            result.push(EntryInfo {
+                path: item.into_path(),
+                modified_time,
+                content,
+            });
         }
-        hasher.finalize().to_vec()
+        result
     }
 
     fn populate_dir(dir: &Path) {
@@ -393,13 +455,14 @@ mod tests {
         populate_dir(dir);
         symlink(uncompressed_file.path(), dir.join("symlink")).unwrap();
 
-        let old_hash = recursive_hash(dir);
+        let old_contents = recursive_read(dir);
 
         let mut fc = FileCompressor::new();
         fc.recursive_compress(iter::once(dir), compressor_kind, 1.0, 2, &NoProgress, true);
+        std::thread::sleep(std::time::Duration::from_millis(10));
 
-        let new_hash = recursive_hash(dir);
-        assert_eq!(old_hash, new_hash);
+        let new_contents = recursive_read(dir);
+        assert_entries_equal(&old_contents, &new_contents);
 
         let info = info::get_recursive(dir).unwrap();
         // These are very compressible files
@@ -420,8 +483,8 @@ mod tests {
         let mut fc = FileCompressor::new();
         fc.recursive_decompress(iter::once(dir), true, &NoProgress, true);
 
-        let new_hash = recursive_hash(dir);
-        assert_eq!(old_hash, new_hash);
+        let new_contents = recursive_read(dir);
+        assert_entries_equal(&old_contents, &new_contents);
     }
 
     #[test]
@@ -429,7 +492,7 @@ mod tests {
         let mut compressible_file = tempfile::NamedTempFile::new().unwrap();
         compressible_file.write_all(&[0; 16 * 1024]).unwrap();
         compressible_file.flush().unwrap();
-        let hash = recursive_hash(compressible_file.path());
+        let contents = recursive_read(compressible_file.path());
 
         let mut fc = FileCompressor::new();
         fc.recursive_compress(
@@ -441,8 +504,8 @@ mod tests {
             true,
         );
 
-        let new_hash = recursive_hash(compressible_file.path());
-        assert_eq!(hash, new_hash);
+        let new_contents = recursive_read(compressible_file.path());
+        assert_entries_equal(&contents, &new_contents);
 
         let info = info::get_recursive(compressible_file.path()).unwrap();
         // These are very compressible files
@@ -461,7 +524,7 @@ mod tests {
         compressible_file.flush().unwrap();
 
         populate_dir(&inner_dir);
-        let hash = recursive_hash(outer_dir.path());
+        let contents = recursive_read(outer_dir.path());
 
         let mut fc = FileCompressor::new();
         fc.recursive_compress(
@@ -473,8 +536,8 @@ mod tests {
             false,
         );
 
-        let new_hash = recursive_hash(outer_dir.path());
-        assert_eq!(hash, new_hash);
+        let new_contents = recursive_read(outer_dir.path());
+        assert_entries_equal(&contents, &new_contents);
 
         let info = info::get_recursive(outer_dir.path()).unwrap();
         // These are very compressible files
