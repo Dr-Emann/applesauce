@@ -1,0 +1,3 @@
+[workspace]
+# Releases will be done by cargo-dist
+git_release_enable = false
