@@ -76,7 +76,7 @@ pub struct Context {
     // Fields are dropped in top-down order, so ensure we update the parent's times before
     // dropping the operation (which will notify that the operation is done if this is the last
     // file).
-    _parent_reset: Option<Arc<times::Resetter>>,
+    parent_resetter: Option<Arc<times::Resetter>>,
     operation: Arc<OperationContext>,
     path: PathBuf,
     progress: Box<dyn progress::Task + Send + Sync>,
@@ -205,7 +205,7 @@ impl BackgroundThreads {
                         path,
                         progress: inner_progress,
                         orig_metadata: metadata,
-                        _parent_reset: dir_reset,
+                        parent_resetter: dir_reset,
                         orig_times: saved_times,
                     }),
                 })
