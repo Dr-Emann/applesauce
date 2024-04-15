@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.5.1...applesauce-v0.5.2) - 2024-04-15
+
+### Other
+- Add benchmark to compare compressors
+- Do not compress a file inside a dir we're also compressing
+
 ## [0.5.1](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.5.0...applesauce-v0.5.1) - 2024-04-15
 
 ### Added
