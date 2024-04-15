@@ -1,3 +1,13 @@
 [workspace]
 # Releases will be done by cargo-dist
 git_release_enable = false
+
+[[package]]
+name = "applesauce-cli"
+changelog_include = ["applesauce", "applesauce-core"]
+
+[changelog]
+link_parsers = [
+    { pattern = "#(\\d+)", href = "https://github.com/Dr-Emann/applesauce/issues/$1" },
+]
+
