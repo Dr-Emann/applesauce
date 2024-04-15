@@ -73,11 +73,14 @@ impl Drop for OperationContext {
 }
 
 pub struct Context {
+    // Fields are dropped in top-down order, so ensure we update the parent's times before
+    // dropping the operation (which will notify that the operation is done if this is the last
+    // file).
+    _parent_reset: Option<Arc<ResetTimes>>,
     operation: Arc<OperationContext>,
     path: PathBuf,
     orig_size: u64,
     progress: Box<dyn progress::Task + Send + Sync>,
-    _parent_reset: Option<Arc<ResetTimes>>,
 }
 
 impl Drop for Context {
