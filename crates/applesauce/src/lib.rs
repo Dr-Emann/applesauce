@@ -516,14 +516,14 @@ mod tests {
     fn compress_dir_and_file() {
         let outer_dir = TempDir::new().unwrap();
         let inner_dir = outer_dir.path().join("inner");
-        let inner_file_path = inner_dir.join("file");
         fs::create_dir(&inner_dir).unwrap();
-
-        let mut compressible_file = File::create(&inner_file_path).unwrap();
-        compressible_file.write_all(&[0; 16 * 1024]).unwrap();
-        compressible_file.flush().unwrap();
-
         populate_dir(&inner_dir);
+
+        let inner_file_path = outer_dir.path().join("file");
+        let mut inner_file = File::create(&inner_file_path).unwrap();
+        inner_file.write_all(&[0; 16 * 1024]).unwrap();
+        inner_file.flush().unwrap();
+
         let contents = recursive_read(outer_dir.path());
 
         let mut fc = FileCompressor::new();
