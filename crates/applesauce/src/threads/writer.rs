@@ -157,6 +157,9 @@ impl Handler {
             let _entered = tracing::debug_span!("rename tmp file").entered();
             tmp_file.persist(&item.context.path)?
         };
+        if let Some(resetter) = &item.context.parent_resetter {
+            resetter.activate();
+        }
         if let Err(e) = times::reset_times(&new_file, &item.context.orig_times) {
             tracing::error!("Unable to reset times: {e}");
         }
@@ -184,6 +187,9 @@ impl Handler {
         )?;
 
         let new_file = tmp_file.persist(&item.context.path)?;
+        if let Some(resetter) = &item.context.parent_resetter {
+            resetter.activate();
+        }
         if let Err(e) = times::reset_times(&new_file, &item.context.orig_times) {
             tracing::error!("Unable to reset times: {e}");
         }

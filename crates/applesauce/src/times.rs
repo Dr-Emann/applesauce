@@ -5,6 +5,7 @@ use std::mem::MaybeUninit;
 use std::os::fd::AsRawFd;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 use std::{io, mem, ptr};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -200,10 +201,14 @@ pub fn reset_times<F: GetSet + std::fmt::Debug + ?Sized>(f: &F, saved: &Saved) -
     f.reset_times(saved)
 }
 
+/// Reset the times of a file/dir
+///
+/// By default, will do nothing on drop, unless `activate` is called at least once
 #[derive(Debug)]
 pub struct Resetter {
     dir_path: CString,
     saved_times: Saved,
+    activated: AtomicBool,
 }
 
 impl Resetter {
@@ -212,12 +217,20 @@ impl Resetter {
         Ok(Self {
             dir_path,
             saved_times,
+            activated: AtomicBool::new(false),
         })
+    }
+
+    pub fn activate(&self) {
+        self.activated
+            .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
 impl Drop for Resetter {
     fn drop(&mut self) {
-        let _ = times::reset_times(self.dir_path.as_c_str(), &self.saved_times);
+        if self.activated.load(std::sync::atomic::Ordering::Relaxed) {
+            let _ = times::reset_times(self.dir_path.as_c_str(), &self.saved_times);
+        }
     }
 }
