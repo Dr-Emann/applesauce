@@ -10,7 +10,7 @@ readme = "../../README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["zlib", "system-lzfse", "lzvn"]
+default = ["zlib", "lzfse", "lzvn"]
 
 zlib = ["dep:flate2"]
 lzfse = ["dep:lzfse-sys"]
@@ -33,3 +33,8 @@ lzfse-sys = { version = "=1.0.0", optional = true }
 
 [dev-dependencies]
 rand = "0.8.5"
+criterion = { version = "0.5.1", features = ["html_reports"] }
+
+[[bench]]
+name = "bench"
+harness = false

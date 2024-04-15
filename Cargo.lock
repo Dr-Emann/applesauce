@@ -110,6 +110,7 @@ dependencies = [
 name = "applesauce-core"
 version = "0.3.0"
 dependencies = [
+ "criterion",
  "flate2",
  "libc",
  "lzfse-sys",

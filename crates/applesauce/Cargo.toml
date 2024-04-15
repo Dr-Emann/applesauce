@@ -12,14 +12,14 @@ readme = "../../README.md"
 [lib]
 
 [features]
-default = ["zlib", "system-lzfse", "lzvn"]
+default = ["zlib", "lzfse", "lzvn"]
 
 zlib = ["applesauce-core/zlib"]
 lzfse = ["applesauce-core/lzfse"]
 lzvn = ["applesauce-core/lzvn"]
 
 # If specified, takes preceidence over lzfse feature
-system-lzfse = ["lzfse"]
+system-lzfse = ["lzfse", "applesauce-core/system-lzfse"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
