@@ -38,10 +38,7 @@ fn walk_dir_over(
               path: &Path,
               _state,
               entries: &mut Vec<jwalk::Result<jwalk::DirEntry<((), State)>>>| {
-            let reset_times: State = path
-                .metadata()
-                .ok()
-                .map(|metadata| Arc::new(ResetTimes::new(path, metadata)));
+            let mut reset_times: Option<State> = None;
             // Remove ignored directories from the list of entries.
             // Also, add the client state to the entry.
             entries.retain_mut(|entry| {
@@ -51,6 +48,14 @@ fn walk_dir_over(
                     }
                     #[allow(clippy::filetype_is_file)]
                     if entry.file_type().is_file() {
+                        let reset_times = match &mut reset_times {
+                            Some(reset_times) => reset_times,
+                            None => reset_times.insert(
+                                path.metadata()
+                                    .ok()
+                                    .map(|metadata| Arc::new(ResetTimes::new(path, metadata))),
+                            ),
+                        };
                         entry.client_state.clone_from(&reset_times);
                     }
                 }

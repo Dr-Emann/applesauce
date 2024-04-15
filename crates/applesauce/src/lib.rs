@@ -138,9 +138,12 @@ impl TimeReset for File {
     }
 }
 
-#[tracing::instrument(level = "debug", skip_all)]
+#[tracing::instrument(level = "debug", skip(metadata))]
 #[inline]
-fn reset_times<F: TimeReset + ?Sized>(f: &F, metadata: &Metadata) -> io::Result<()> {
+fn reset_times<F: TimeReset + std::fmt::Debug + ?Sized>(
+    f: &F,
+    metadata: &Metadata,
+) -> io::Result<()> {
     f.reset_times(metadata)
 }
 
