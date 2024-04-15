@@ -1,32 +1,10 @@
 use crate::progress::Progress;
+use crate::times;
 use crate::tmpdir_paths::TmpdirPaths;
 use std::collections::HashSet;
-use std::ffi::CString;
 use std::fs::FileType;
-use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-
-#[derive(Debug)]
-pub struct ResetTimes {
-    dir_path: CString,
-    metadata: std::fs::Metadata,
-}
-
-impl ResetTimes {
-    fn new(path: &Path, metadata: std::fs::Metadata) -> Self {
-        Self {
-            dir_path: CString::new(path.as_os_str().as_bytes()).unwrap(),
-            metadata,
-        }
-    }
-}
-
-impl Drop for ResetTimes {
-    fn drop(&mut self) {
-        let _ = crate::reset_times(self.dir_path.as_c_str(), &self.metadata);
-    }
-}
 
 fn walk_dir_over(
     path: &Path,
@@ -51,12 +29,13 @@ fn walk_dir_over(
                         let reset_times = match &mut reset_times {
                             Some(reset_times) => reset_times,
                             None => reset_times.insert(
-                                path.metadata()
+                                times::save_times(path)
+                                    .and_then(|saved_times| times::Resetter::new(path, saved_times))
                                     .ok()
-                                    .map(|metadata| Arc::new(ResetTimes::new(path, metadata))),
+                                    .map(Arc::new),
                             ),
                         };
-                        entry.client_state.clone_from(&reset_times);
+                        entry.client_state.clone_from(reset_times);
                     }
                 }
                 true
@@ -65,7 +44,7 @@ fn walk_dir_over(
     )
 }
 
-type State = Option<Arc<ResetTimes>>;
+type State = Option<Arc<times::Resetter>>;
 
 pub struct Walker<'a, P> {
     paths: Vec<&'a Path>,
@@ -87,7 +66,7 @@ impl<'a, P: Progress + Send + Sync> Walker<'a, P> {
     pub fn run(
         self,
         tmpdirs: &TmpdirPaths,
-        f: impl Fn(FileType, PathBuf, Option<Arc<ResetTimes>>) + Send + Sync,
+        f: impl Fn(FileType, PathBuf, Option<Arc<times::Resetter>>) + Send + Sync,
     ) {
         let ignored_dirs: Arc<HashSet<PathBuf>> =
             Arc::new(tmpdirs.paths().map(PathBuf::from).collect());

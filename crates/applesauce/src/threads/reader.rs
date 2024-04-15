@@ -3,14 +3,13 @@ use crate::threads::writer::Chunk;
 use crate::threads::{compressing, writer, BgWork, Context, Mode, WorkHandler};
 use crate::{rfork_storage, seq_queue, try_read_all};
 use applesauce_core::BLOCK_SIZE;
-use std::fs::{File, Metadata};
+use std::fs::File;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::{io, thread};
 
 pub(super) struct WorkItem {
     pub context: Arc<Context>,
-    pub metadata: Metadata,
 }
 
 pub(super) struct Work {
@@ -44,11 +43,11 @@ impl Handler {
     }
 
     fn try_handle(&mut self, item: WorkItem) -> io::Result<()> {
-        let WorkItem { context, metadata } = item;
+        let WorkItem { context } = item;
         let _guard = tracing::info_span!("reading file", path=%context.path.display()).entered();
         let file = Arc::new(File::open(&context.path)?);
 
-        let file_size = metadata.len();
+        let file_size = context.orig_metadata.len();
         let (tx, rx) = seq_queue::bounded(
             thread::available_parallelism()
                 .map(NonZeroUsize::get)
@@ -62,7 +61,6 @@ impl Handler {
                     context: Arc::clone(&context),
                     file: Arc::clone(&file),
                     blocks: rx,
-                    metadata,
                 })
                 .unwrap();
         }

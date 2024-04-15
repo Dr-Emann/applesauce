@@ -1,9 +1,9 @@
 use crate::threads::{BgWork, Context, Mode, WorkHandler};
-use crate::{reset_times, seq_queue, set_flags, xattr};
+use crate::{seq_queue, set_flags, times, xattr};
 use applesauce_core::compressor::Kind;
 use applesauce_core::decmpfs;
 use resource_fork::ResourceFork;
-use std::fs::{File, Metadata};
+use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Seek, Write};
 use std::os::fd::AsRawFd;
 use std::os::macos::fs::MetadataExt;
@@ -22,7 +22,6 @@ pub(super) struct WorkItem {
     pub context: Arc<Context>,
     pub file: Arc<File>,
     pub blocks: seq_queue::Receiver<io::Result<Chunk>>,
-    pub metadata: Metadata,
 }
 
 pub(super) struct Work;
@@ -69,7 +68,8 @@ impl Handler {
             } => minimum_compression_ratio,
             _ => unreachable!("write_blocks called in non-compress mode"),
         };
-        let max_compressed_size = (context.orig_size as f64 * minimum_compression_ratio) as u64;
+        let max_compressed_size =
+            (context.orig_metadata.len() as f64 * minimum_compression_ratio) as u64;
 
         let chunks = crate::instrumented_iter(chunks, tracing::debug_span!("waiting for chunk"));
         for chunk in chunks {
@@ -101,7 +101,7 @@ impl Handler {
         mut item: WorkItem,
         compressor_kind: Kind,
     ) -> io::Result<()> {
-        let uncompressed_file_size = item.metadata.len();
+        let uncompressed_file_size = item.context.orig_metadata.len();
 
         let mut tmp_file = tmp_file_for(&item)?;
         copy_xattrs(&item.file, tmp_file.as_file())?;
@@ -128,7 +128,7 @@ impl Handler {
         copy_metadata(&item.file, tmp_file.as_file())?;
         set_flags(
             tmp_file.as_file(),
-            item.metadata.st_flags() | libc::UF_COMPRESSED,
+            item.context.orig_metadata.st_flags() | libc::UF_COMPRESSED,
         )?;
 
         if item.context.operation.verify {
@@ -157,7 +157,7 @@ impl Handler {
             let _entered = tracing::debug_span!("rename tmp file").entered();
             tmp_file.persist(&item.context.path)?
         };
-        if let Err(e) = reset_times(&new_file, &item.metadata) {
+        if let Err(e) = times::reset_times(&new_file, &item.context.orig_times) {
             tracing::error!("Unable to reset times: {e}");
         }
         Ok(())
@@ -180,11 +180,11 @@ impl Handler {
         copy_metadata(&item.file, tmp_file.as_file())?;
         set_flags(
             tmp_file.as_file(),
-            item.metadata.st_flags() & !libc::UF_COMPRESSED,
+            item.context.orig_metadata.st_flags() & !libc::UF_COMPRESSED,
         )?;
 
         let new_file = tmp_file.persist(&item.context.path)?;
-        if let Err(e) = reset_times(&new_file, &item.metadata) {
+        if let Err(e) = times::reset_times(&new_file, &item.context.orig_times) {
             tracing::error!("Unable to reset times: {e}");
         }
         Ok(())
@@ -216,7 +216,7 @@ fn tmp_file_for(item: &WorkItem) -> io::Result<NamedTempFile> {
     item.context
         .operation
         .tempdirs
-        .tempfile_for(&item.context.path, &item.metadata)
+        .tempfile_for(&item.context.path, &item.context.orig_metadata)
 }
 
 #[tracing::instrument(level = "debug", skip_all, err)]

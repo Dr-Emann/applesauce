@@ -1,9 +1,9 @@
 use crate::info::FileCompressionState;
 use crate::progress::{self, Progress, SkipReason};
-use crate::scan::ResetTimes;
 use crate::tmpdir_paths::TmpdirPaths;
-use crate::{info, scan, Stats};
+use crate::{info, scan, times, Stats};
 use applesauce_core::compressor;
+use std::fs::Metadata;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -76,11 +76,12 @@ pub struct Context {
     // Fields are dropped in top-down order, so ensure we update the parent's times before
     // dropping the operation (which will notify that the operation is done if this is the last
     // file).
-    _parent_reset: Option<Arc<ResetTimes>>,
+    _parent_reset: Option<Arc<times::Resetter>>,
     operation: Arc<OperationContext>,
     path: PathBuf,
-    orig_size: u64,
     progress: Box<dyn progress::Task + Send + Sync>,
+    orig_metadata: Metadata,
+    orig_times: times::Saved,
 }
 
 impl Drop for Context {
@@ -177,7 +178,6 @@ impl BackgroundThreads {
                     return;
                 }
             };
-
             let file_info = info::get_file_info(&path, &metadata);
             stats.add_start_file(&metadata, &file_info);
 
@@ -190,16 +190,24 @@ impl BackgroundThreads {
                 _ => false,
             };
             if send {
+                let saved_times = match times::save_times(path.as_path()) {
+                    Ok(saved_times) => saved_times,
+                    Err(e) => {
+                        progress.file_skipped(&path, SkipReason::ReadError(e));
+                        return;
+                    }
+                };
+
                 let inner_progress = Box::new(progress.file_task(&path, metadata.len()));
                 chan.send(reader::WorkItem {
                     context: Arc::new(Context {
                         operation: Arc::clone(&operation),
                         path,
                         progress: inner_progress,
-                        orig_size: metadata.len(),
+                        orig_metadata: metadata,
                         _parent_reset: dir_reset,
+                        orig_times: saved_times,
                     }),
-                    metadata,
                 })
                 .unwrap();
             } else {
@@ -282,7 +290,7 @@ impl fmt::Debug for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Context")
             .field("path", &self.path)
-            .field("orig_size", &self.orig_size)
+            .field("orig_size", &self.orig_metadata.len())
             .field("operation", &self.operation)
             .finish()
     }
