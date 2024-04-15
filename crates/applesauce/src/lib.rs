@@ -19,6 +19,7 @@ mod rfork_storage;
 mod scan;
 mod seq_queue;
 mod threads;
+mod times;
 mod tmpdir_paths;
 mod xattr;
 
@@ -27,7 +28,6 @@ use std::ffi::CStr;
 use std::fs::{File, Metadata};
 use std::io::prelude::*;
 use std::mem::MaybeUninit;
-use std::os::unix::fs::MetadataExt as _;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::sync::atomic::AtomicU64;
@@ -93,58 +93,6 @@ fn vol_supports_compression_cap(mnt_root: &CStr) -> io::Result<bool> {
     }
 
     Ok(vol_attrs.vol_attrs.valid[IDX] & vol_attrs.vol_attrs.capabilities[IDX] & MASK != 0)
-}
-
-trait TimeReset {
-    fn reset_times(&self, metadata: &Metadata) -> io::Result<()>;
-}
-
-fn metadata_times(metadata: &Metadata) -> [libc::timespec; 2] {
-    [
-        libc::timespec {
-            tv_sec: metadata.atime(),
-            tv_nsec: metadata.atime_nsec(),
-        },
-        libc::timespec {
-            tv_sec: metadata.mtime(),
-            tv_nsec: metadata.mtime_nsec(),
-        },
-    ]
-}
-
-impl TimeReset for CStr {
-    fn reset_times(&self, metadata: &Metadata) -> io::Result<()> {
-        let times = metadata_times(metadata);
-        // SAFETY: fd is valid, times points to an array of 2 timespec values
-        let rc = unsafe { libc::utimensat(libc::AT_FDCWD, self.as_ptr(), times.as_ptr(), 0) };
-        if rc == 0 {
-            Ok(())
-        } else {
-            Err(io::Error::last_os_error())
-        }
-    }
-}
-
-impl TimeReset for File {
-    fn reset_times(&self, metadata: &Metadata) -> io::Result<()> {
-        let times = metadata_times(metadata);
-        // SAFETY: fd is valid, times points to an array of 2 timespec values
-        let rc = unsafe { libc::futimens(self.as_raw_fd(), times.as_ptr()) };
-        if rc == 0 {
-            Ok(())
-        } else {
-            Err(io::Error::last_os_error())
-        }
-    }
-}
-
-#[tracing::instrument(level = "debug", skip(metadata))]
-#[inline]
-fn reset_times<F: TimeReset + std::fmt::Debug + ?Sized>(
-    f: &F,
-    metadata: &Metadata,
-) -> io::Result<()> {
-    f.reset_times(metadata)
 }
 
 #[tracing::instrument(level = "trace", skip_all, fields(flags), err)]
