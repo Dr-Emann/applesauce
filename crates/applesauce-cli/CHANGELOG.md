@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.3](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.2...applesauce-cli-v0.5.3) - 2024-04-16
+
+### Other
+- Only reset directories if we modify the contents
+- Save and restore created/added/modified/accessed times
+- Only reset a directory's times if it has files under it
+
 ## [0.5.2](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.1...applesauce-cli-v0.5.2) - 2024-04-15
 
 ### Other
