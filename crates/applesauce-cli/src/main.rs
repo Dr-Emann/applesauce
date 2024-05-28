@@ -252,6 +252,7 @@ fn main() {
                 verify,
             );
             progress_bars.finish();
+            drop(progress_bars);
             tracing::info!("Finished compressing");
             if verbosity >= Verbosity::Normal {
                 display_stats(&stats);
