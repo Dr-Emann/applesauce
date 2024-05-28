@@ -515,4 +515,18 @@ mod tests {
         let dir = TempDir::new().unwrap();
         compress_folder(compressor::Kind::Lzfse, dir.path());
     }
+
+    #[test]
+    fn compress_with_hardlinks() {
+        let dir = TempDir::new().unwrap();
+        let orig_file = dir.path().join("test1.txt");
+        fs::write(&orig_file, b"fooooooobaaaaar").unwrap();
+        fs::hard_link(&orig_file, dir.path().join("test2.txt")).unwrap();
+
+        let orig_contents = recursive_read(dir.path());
+        let mut fc = FileCompressor::new();
+        fc.recursive_compress([dir.path()], Kind::default(), 2.0, 2, &NoProgress, false);
+        let next_contents = recursive_read(dir.path());
+        assert_entries_equal(&orig_contents, &next_contents);
+    }
 }
