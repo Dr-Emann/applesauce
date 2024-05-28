@@ -12,7 +12,9 @@ on:
 jobs:
   release-plz:
     name: Release-plz
-    runs-on: macos-latest
+    # Temporarily use macos-13 until macos-latest works.
+    # See https://github.com/jaxxstorm/action-install-gh-release/pull/83
+    runs-on: macos-13
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
