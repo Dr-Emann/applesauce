@@ -252,9 +252,10 @@ fn main() {
                 verify,
             );
             progress_bars.finish();
+            drop(progress_bars);
             tracing::info!("Finished compressing");
             if verbosity >= Verbosity::Normal {
-                display_stats(&stats);
+                display_stats(&stats, true);
             }
         }
         Commands::Decompress(Decompress {
@@ -272,7 +273,7 @@ fn main() {
             progress_bars.finish();
             tracing::info!("Finished decompressing");
             if verbosity >= Verbosity::Normal {
-                display_stats(&stats);
+                display_stats(&stats, false);
             }
         }
         Commands::Info(info) => {
@@ -369,9 +370,30 @@ fn main() {
     }
 }
 
-pub fn display_stats(stats: &Stats) {
+pub fn display_stats(stats: &Stats, compress_mode: bool) {
     println!("Total Files: {}", stats.files.load(Ordering::Relaxed));
     let total_file_sizes = stats.total_file_sizes.load(Ordering::Relaxed);
+
+    let compressed_count_start = stats.compressed_file_count_start.load(Ordering::Relaxed);
+    let compressed_count_final = stats.compressed_file_count_final.load(Ordering::Relaxed);
+    if compress_mode {
+        println!(
+            "New Files Compressed: {} ({} total compressed)",
+            compressed_count_final.saturating_sub(compressed_count_start),
+            compressed_count_final,
+        );
+    } else {
+        print!(
+            "Files Decompressed: {}",
+            compressed_count_start.saturating_sub(compressed_count_final),
+        );
+        if compressed_count_final != 0 {
+            println!(" ({} remaining compressed)", compressed_count_final);
+        } else {
+            println!();
+        }
+    }
+
     let compressed_size_start = stats.compressed_size_start.load(Ordering::Relaxed);
     let compressed_size_final = stats.compressed_size_final.load(Ordering::Relaxed);
     println!(
