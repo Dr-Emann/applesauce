@@ -2,7 +2,7 @@
 name = "applesauce"
 description = "A tool for compressing files with apple file system compression"
 license = "GPL-3.0-or-later"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2021"
 keywords = ["compression", "afsc", "decmpfs"]
 categories = ["compression"]
@@ -25,7 +25,7 @@ system-lzfse = ["lzfse", "applesauce-core/system-lzfse"]
 
 [dependencies]
 resource-fork = { version = "^0.3.0", path = "../resource-fork" }
-applesauce-core = { version = "^0.3.1", path = "../applesauce-core" }
+applesauce-core = { version = "^0.3.2", path = "../applesauce-core" }
 
 crossbeam-channel = "0.5.13"
 libc = "0.2.155"
