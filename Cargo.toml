@@ -5,9 +5,9 @@ resolver = "2"
 # Config for 'cargo dist'
 [workspace.metadata.dist]
 # The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.11.1"
+cargo-dist-version = "0.18.0"
 # CI backends to support
-ci = ["github"]
+ci = "github"
 # The installers to generate for each app
 installers = ["shell", "homebrew"]
 # Target platforms to build apps for (Rust target-triple syntax)
@@ -20,7 +20,10 @@ tap = "Dr-Emann/homebrew-tap"
 publish-jobs = ["homebrew"]
 # Customize the Homebrew formula name
 formula = "applesauce"
+# A prefix git tags must include for cargo-dist to care about them
 tag-namespace = "applesauce-cli"
+# Whether to install an updater program
+install-updater = false
 
 [profile.release]
 debug = true
