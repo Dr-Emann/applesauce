@@ -5,7 +5,7 @@ resolver = "2"
 # Config for 'cargo dist'
 [workspace.metadata.dist]
 # The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.18.0"
+cargo-dist-version = "0.20.0"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
@@ -24,6 +24,8 @@ formula = "applesauce"
 tag-namespace = "applesauce-cli"
 # Whether to install an updater program
 install-updater = false
+# Path that installers should place binaries in
+install-path = "CARGO_HOME"
 
 [profile.release]
 debug = true
