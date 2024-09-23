@@ -1,19 +1,19 @@
 use crate::compressor::lz;
 use lzfse_sys::{lzfse_decode_buffer, lzfse_decode_scratch_size, lzfse_encode_buffer};
 use std::cmp;
+use std::ptr::NonNull;
 
 pub enum Impl {}
 
-impl lz::Impl for Impl {
+unsafe impl lz::Impl for Impl {
     fn scratch_size() -> usize {
         // SAFETY: Both of these functions are always safe to call
-        unsafe { cmp::max(lzfse_encode_scratch_size(), lzfse_decode_scratch_size()) }
+        lz::cached_size!(unsafe {
+            cmp::max(lzfse_encode_scratch_size(), lzfse_decode_scratch_size()).max(1)
+        })
     }
 
-    unsafe fn encode(dst: &mut [u8], src: &[u8], scratch: &mut [u8]) -> usize {
-        // SAFETY: function is always safe to call
-        debug_assert!(scratch.len() >= unsafe { lzfse_encode_scratch_size() });
-
+    unsafe fn encode(dst: &mut [u8], src: &[u8], scratch: NonNull<u8>) -> usize {
         // SAFETY: Buffers are valid for the specified lengths, and caller must ensure scratch is large enough
         let res = unsafe {
             lzfse_encode_buffer(
@@ -21,17 +21,14 @@ impl lz::Impl for Impl {
                 dst.len(),
                 src.as_ptr().cast(),
                 src.len(),
-                scratch.as_mut_ptr().cast(),
+                scratch.as_ptr().cast(),
             )
         };
         debug_assert!(res <= dst.len());
         res
     }
 
-    unsafe fn decode(dst: &mut [u8], src: &[u8], scratch: &mut [u8]) -> usize {
-        // SAFETY: function is always safe to call
-        debug_assert!(scratch.len() >= unsafe { lzfse_decode_scratch_size() });
-
+    unsafe fn decode(dst: &mut [u8], src: &[u8], scratch: NonNull<u8>) -> usize {
         // SAFETY: Buffers are valid for the specified lengths, and caller must ensure scratch is large enough
         let res = unsafe {
             lzfse_decode_buffer(
@@ -39,7 +36,7 @@ impl lz::Impl for Impl {
                 dst.len(),
                 src.as_ptr().cast(),
                 src.len(),
-                scratch.as_mut_ptr().cast(),
+                scratch.as_ptr().cast(),
             )
         };
         debug_assert!(res <= dst.len());

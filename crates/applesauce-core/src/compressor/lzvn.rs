@@ -2,27 +2,30 @@ use crate::compressor::lz;
 use libc::c_int;
 use std::ffi::c_void;
 use std::mem::MaybeUninit;
+use std::ptr::NonNull;
 use std::{cmp, mem};
 
 pub type Lzvn = lz::Lz<Impl>;
 
 pub enum Impl {}
 
-impl lz::Impl for Impl {
+unsafe impl lz::Impl for Impl {
     const UNCOMPRESSED_PREFIX: Option<u8> = Some(0x06);
 
     fn scratch_size() -> usize {
-        cmp::max(
-            mem::size_of::<DecoderState>() + mem::align_of::<DecoderState>(),
+        const {
+            // lz implementation will align to a pointer, ensure that's enough for
+            // the decoder state
+            assert!(mem::align_of::<DecoderState>() <= mem::align_of::<*mut u8>());
+        }
+        lz::cached_size!(cmp::max(
+            mem::size_of::<DecoderState>(),
             // Safety: this function is always safe to call
             unsafe { lzvn_encode_scratch_size() },
-        )
+        ))
     }
 
-    unsafe fn encode(dst: &mut [u8], src: &[u8], scratch: &mut [u8]) -> usize {
-        // SAFETY: function is always safe to call
-        debug_assert!(scratch.len() >= unsafe { lzvn_encode_scratch_size() });
-
+    unsafe fn encode(dst: &mut [u8], src: &[u8], scratch: NonNull<u8>) -> usize {
         // SAFETY: Buffers are valid for the specified lengths, and caller must ensure scratch is large enough
         let res = unsafe {
             lzvn_encode_buffer(
@@ -30,16 +33,17 @@ impl lz::Impl for Impl {
                 dst.len(),
                 src.as_ptr(),
                 src.len(),
-                scratch.as_mut_ptr().cast(),
+                scratch.as_ptr().cast(),
             )
         };
         debug_assert!(res <= dst.len());
         res
     }
 
-    unsafe fn decode(dst: &mut [u8], src: &[u8], _scratch: &mut [u8]) -> usize {
-        // SAFETY: decoder state is all numeric and safe to zero init
-        let mut state: DecoderState = unsafe { MaybeUninit::zeroed().assume_init() };
+    #[no_mangle]
+    unsafe fn decode(dst: &mut [u8], src: &[u8], scratch: NonNull<u8>) -> usize {
+        let state = scratch.cast::<MaybeUninit<DecoderState>>().as_mut();
+        let state: &mut DecoderState = state.write(DecoderState::default());
 
         let src_range = src.as_ptr_range();
         state.src = src_range.start;
@@ -52,15 +56,13 @@ impl lz::Impl for Impl {
 
         // SAFETY: state is fully initialized
         unsafe {
-            lzvn_decode(&mut state);
+            lzvn_decode(state);
         }
 
         assert!(dst_range.contains(&state.dst));
         // SAFETY: lvzn_decode will have updated the dst ptr on state,
         //         but kept within range dst..dst_end
-        unsafe { state.dst.offset_from(dst.as_mut_ptr()) }
-            .try_into()
-            .unwrap()
+        unsafe { state.dst.offset_from_unsigned(dst.as_mut_ptr()) }
     }
 }
 
@@ -70,6 +72,7 @@ const _: () = {
 };
 
 #[repr(C)]
+#[derive(Default)]
 struct DecoderState {
     src: *const u8,
     src_end: *const u8,

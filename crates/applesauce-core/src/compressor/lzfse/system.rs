@@ -1,28 +1,24 @@
 use crate::compressor::lz;
 use std::cmp;
+use std::ptr::NonNull;
 
 pub enum Impl {}
 
 const ALGORITHM: bindings::compression_algorithm =
     bindings::compression_algorithm::COMPRESSION_LZFSE;
 
-impl lz::Impl for Impl {
+unsafe impl lz::Impl for Impl {
     fn scratch_size() -> usize {
         // SAFETY: Both of these functions are always safe to call
-        unsafe {
+        lz::cached_size!(unsafe {
             cmp::max(
                 bindings::compression_encode_scratch_buffer_size(ALGORITHM),
                 bindings::compression_decode_scratch_buffer_size(ALGORITHM),
             )
-        }
+        })
     }
 
-    unsafe fn encode(dst: &mut [u8], src: &[u8], scratch: &mut [u8]) -> usize {
-        debug_assert!(
-            // SAFETY: function is always safe to call
-            scratch.len() >= unsafe { bindings::compression_encode_scratch_buffer_size(ALGORITHM) }
-        );
-
+    unsafe fn encode(dst: &mut [u8], src: &[u8], scratch: NonNull<u8>) -> usize {
         // SAFETY: Buffers are valid for the specified lengths, and caller must ensure scratch is large enough
         let res = unsafe {
             bindings::compression_encode_buffer(
@@ -30,7 +26,7 @@ impl lz::Impl for Impl {
                 dst.len(),
                 src.as_ptr().cast(),
                 src.len(),
-                scratch.as_mut_ptr().cast(),
+                scratch.as_ptr().cast(),
                 ALGORITHM,
             )
         };
@@ -38,12 +34,7 @@ impl lz::Impl for Impl {
         res
     }
 
-    unsafe fn decode(dst: &mut [u8], src: &[u8], scratch: &mut [u8]) -> usize {
-        debug_assert!(
-            // SAFETY: function is always safe to call
-            scratch.len() >= unsafe { bindings::compression_decode_scratch_buffer_size(ALGORITHM) }
-        );
-
+    unsafe fn decode(dst: &mut [u8], src: &[u8], scratch: NonNull<u8>) -> usize {
         // SAFETY: Buffers are valid for the specified lengths, and caller must ensure scratch is large enough
         let res = unsafe {
             bindings::compression_decode_buffer(
@@ -51,7 +42,7 @@ impl lz::Impl for Impl {
                 dst.len(),
                 src.as_ptr().cast(),
                 src.len(),
-                scratch.as_mut_ptr().cast(),
+                scratch.as_ptr().cast(),
                 ALGORITHM,
             )
         };
