@@ -1,29 +1,78 @@
 use crate::compressor::CompressorImpl;
 use crate::decmpfs;
 use crate::decmpfs::BlockInfo;
+use std::alloc;
 use std::io::SeekFrom;
 use std::marker::PhantomData;
+use std::ptr::NonNull;
 use std::{io, mem};
 
-pub trait Impl {
+macro_rules! cached_size {
+    ($size:expr) => {{
+        static CACHED_SIZE: ::std::sync::atomic::AtomicUsize =
+            ::std::sync::atomic::AtomicUsize::new(0);
+        let size = CACHED_SIZE.load(std::sync::atomic::Ordering::Relaxed);
+        if size != 0 {
+            size
+        } else {
+            let size = $size;
+            debug_assert_ne!(size, 0);
+            CACHED_SIZE.store(size, std::sync::atomic::Ordering::Relaxed);
+            size
+        }
+    }};
+}
+pub(super) use cached_size;
+
+/// An implementation of the LZ compression algorithm.
+///
+/// # Safety
+///
+/// Implementations of this trait must
+/// - Always return the same size for `scratch_size()`
+/// - Only access the up to `scratch_size()` bytes of the `scratch` buffer
+pub unsafe trait Impl {
     const UNCOMPRESSED_PREFIX: Option<u8> = None;
 
     fn scratch_size() -> usize;
 
-    unsafe fn encode(dst: &mut [u8], src: &[u8], scratch: &mut [u8]) -> usize;
-    unsafe fn decode(dst: &mut [u8], src: &[u8], scratch: &mut [u8]) -> usize;
+    unsafe fn encode(dst: &mut [u8], src: &[u8], scratch: NonNull<u8>) -> usize;
+    unsafe fn decode(dst: &mut [u8], src: &[u8], scratch: NonNull<u8>) -> usize;
 }
 
-pub struct Lz<I> {
-    buf: Box<[u8]>,
+pub struct Lz<I: Impl> {
+    buf: NonNull<u8>,
     _impl: PhantomData<I>,
 }
 
+unsafe impl<I: Impl> Send for Lz<I> {}
+unsafe impl<I: Impl> Sync for Lz<I> {}
+
 impl<I: Impl> Lz<I> {
     pub fn new() -> Self {
+        let layout = Self::layout();
+        assert!(layout.size() > 0);
+
+        // SAFETY: layout is non-zero sized
+        let buf = unsafe { alloc::alloc(layout) };
+        let buf = NonNull::new(buf).unwrap_or_else(|| alloc::handle_alloc_error(layout));
         Self {
-            buf: vec![0; I::scratch_size()].into_boxed_slice(),
+            buf,
             _impl: PhantomData,
+        }
+    }
+
+    fn layout() -> alloc::Layout {
+        // Ensure at least one byte: not allowed to allocate a zero sized layout
+        let size = I::scratch_size();
+        alloc::Layout::from_size_align(size, mem::align_of::<*mut u8>()).unwrap()
+    }
+}
+
+impl<I: Impl> Drop for Lz<I> {
+    fn drop(&mut self) {
+        unsafe {
+            alloc::dealloc(self.buf.as_ptr(), Self::layout());
         }
     }
 }
@@ -46,7 +95,7 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         // len is either dst.len() or src.len(), and dst.len() > src.len()
         // src is initialised for len bytes
         // buf is valid to write up to scratch size bytes
-        let len = unsafe { I::encode(&mut dst[..max_compress_size], src, &mut self.buf) };
+        let len = unsafe { I::encode(&mut dst[..max_compress_size], src, self.buf) };
         debug_assert!(len <= max_compress_size);
 
         if len == 0 {
@@ -79,7 +128,7 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         // dst is valid to write up to len bytes
         // src is initialised for len bytes
         // buf is valid to write up to scratch size bytes
-        let len = unsafe { I::decode(dst, src, &mut self.buf) };
+        let len = unsafe { I::decode(dst, src, self.buf) };
         debug_assert!(len < dst.len());
         if len == 0 || len == dst.len() {
             return Err(io::ErrorKind::WriteZero.into());
@@ -171,16 +220,16 @@ mod tests {
 
     struct FakeLzImpl;
 
-    impl Impl for FakeLzImpl {
+    unsafe impl Impl for FakeLzImpl {
         fn scratch_size() -> usize {
             unimplemented!()
         }
 
-        unsafe fn encode(_: &mut [u8], _: &[u8], _: &mut [u8]) -> usize {
+        unsafe fn encode(_: &mut [u8], _: &[u8], _: NonNull<u8>) -> usize {
             unimplemented!()
         }
 
-        unsafe fn decode(_: &mut [u8], _: &[u8], _: &mut [u8]) -> usize {
+        unsafe fn decode(_: &mut [u8], _: &[u8], _: NonNull<u8>) -> usize {
             unimplemented!()
         }
     }
