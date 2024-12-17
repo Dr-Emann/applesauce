@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.5](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.5.4...applesauce-v0.5.5) - 2024-12-17
+
+### Other
+
+- fix clippy warnings
+
 ## [0.5.4](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.5.3...applesauce-v0.5.4) - 2024-07-03
 
 ### Other
