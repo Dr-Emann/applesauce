@@ -76,7 +76,7 @@ impl<T> IntoIterator for Receiver<T> {
     }
 }
 
-impl<'a, T> Iterator for Iter<'a, T> {
+impl<T> Iterator for Iter<'_, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {

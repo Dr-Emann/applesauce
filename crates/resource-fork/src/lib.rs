@@ -66,7 +66,7 @@ impl<'a> ResourceFork<'a> {
     }
 }
 
-impl<'a> io::Write for ResourceFork<'a> {
+impl io::Write for ResourceFork<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let len: u32 = buf
             .len()
