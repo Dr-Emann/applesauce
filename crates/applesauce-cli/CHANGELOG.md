@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.5](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.4...applesauce-cli-v0.5.5) - 2024-12-17
+
+### Other
+
+- Bump the minor-patches group across 1 directory with 3 updates ([#78](https://github.com/Dr-Emann/applesauce/pull/78))
+- fix clippy warnings
+
 ## [0.5.4](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.3...applesauce-cli-v0.5.4) - 2024-07-03
 
 ### Other
