@@ -8,6 +8,8 @@ improvements, including better performance, improved multithreading (even for a
 single file), and reduced memory usage. Applesauce supports all three compression
 algorithms used by HFS+/APFS: LZFSE, LZVN, and ZLIB.
 
+![compression example](https://github.com/user-attachments/assets/3f78a011-7db4-4e7f-9cc9-89781ed78609)
+
 ## Installation
 
 ### Install via Homebrew
