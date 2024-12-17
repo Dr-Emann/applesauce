@@ -12,9 +12,10 @@ on:
 jobs:
   release-plz:
     name: Release-plz
-    # Temporarily use macos-13 until macos-latest works.
-    # See https://github.com/jaxxstorm/action-install-gh-release/pull/83
-    runs-on: macos-13
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
+    runs-on: macos-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,7 +25,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
-        uses: MarcoIeni/release-plz-action@v0.5
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
