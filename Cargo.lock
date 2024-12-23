@@ -603,12 +603,11 @@ checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 
 [[package]]
 name = "lzfse-sys"
-version = "1.0.0"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a32a73f6f18343eabb4439733ef7e3cbf6809e73e3f111950bdc5d4367696af9"
+checksum = "23c80418f1cfc4601f8ef2055dcea77eebea47d2edc74ee0dadb005dd3a9f604"
 dependencies = [
  "cc",
- "libc",
 ]
 
 [[package]]
