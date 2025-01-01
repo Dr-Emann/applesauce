@@ -161,6 +161,15 @@ impl Handler {
         loop {
             let _enter = block_span.enter();
 
+            // make sure we don't reserve a slot if we won't be sending a chunk
+            if total_read == expected_len {
+                let mut buf = [0];
+                let n = try_read_all(file, &mut buf)?;
+                total_read += u64::try_from(n).unwrap();
+                // Outside the loop, we'll error if we read more than expected_len
+                break;
+            }
+
             let slot = {
                 let _enter = tracing::debug_span!("waiting for free slot").entered();
                 match tx.prepare_send() {
