@@ -11,7 +11,7 @@ pub(super) struct WorkItem {
     pub context: Arc<Context>,
     pub data: Vec<u8>,
     pub kind: compressor::Kind,
-    pub slot: seq_queue::Slot<io::Result<writer::Chunk>>,
+    pub slot: seq_queue::Slot<writer::Chunk, io::Error>,
 }
 
 pub(super) struct Work;
@@ -59,10 +59,7 @@ impl WorkHandler<WorkItem> for Handler {
         let size = match size {
             Ok(size) => size,
             Err(e) => {
-                if item.slot.finish(Err(e)).is_err() {
-                    // This should only be because of a failure already reported by the writer
-                    tracing::debug!("unable to finish slot");
-                }
+                item.slot.error(e);
                 return;
             }
         };
@@ -72,7 +69,7 @@ impl WorkHandler<WorkItem> for Handler {
             block: self.buf[..size].to_vec(),
             orig_size: item.data.len().try_into().unwrap(),
         };
-        if item.slot.finish(Ok(chunk)).is_err() {
+        if item.slot.finish(chunk).is_err() {
             // This should only be because of a failure already reported by the writer
             tracing::debug!("unable to finish slot");
         }

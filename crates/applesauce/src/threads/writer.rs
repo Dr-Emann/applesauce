@@ -21,7 +21,7 @@ pub(super) struct Chunk {
 pub(super) struct WorkItem {
     pub context: Arc<Context>,
     pub file: Arc<File>,
-    pub blocks: seq_queue::Receiver<io::Result<Chunk>>,
+    pub blocks: seq_queue::Receiver<Chunk, io::Error>,
 }
 
 pub(super) struct Work;
@@ -56,7 +56,7 @@ impl Handler {
         &mut self,
         context: &Context,
         writer: &mut applesauce_core::writer::Writer<impl applesauce_core::writer::Open>,
-        chunks: seq_queue::Receiver<io::Result<Chunk>>,
+        chunks: seq_queue::Receiver<Chunk, io::Error>,
     ) -> io::Result<()> {
         let block_span = tracing::debug_span!("write block");
 
@@ -71,10 +71,7 @@ impl Handler {
         let max_compressed_size =
             (context.orig_metadata.len() as f64 * minimum_compression_ratio) as u64;
 
-        let chunks = crate::instrumented_iter(chunks, tracing::debug_span!("waiting for chunk"));
-        for chunk in chunks {
-            let chunk = chunk?;
-
+        chunks.try_for_each(|chunk| {
             total_compressed_size += u64::try_from(chunk.block.len()).unwrap();
             if total_compressed_size > max_compressed_size {
                 context.progress.not_compressible_enough(&context.path);
@@ -92,7 +89,8 @@ impl Handler {
 
             writer.add_block(&block)?;
             context.progress.increment(orig_size);
-        }
+            Ok(())
+        })?;
         Ok(())
     }
 
@@ -170,15 +168,13 @@ impl Handler {
         let mut tmp_file = tmp_file_for(&item)?;
         copy_xattrs(&item.file, tmp_file.as_file())?;
 
-        let chunks =
-            crate::instrumented_iter(item.blocks, tracing::debug_span!("waiting for chunk"));
-        for chunk in chunks {
-            let chunk = chunk?;
+        item.blocks.try_for_each(|chunk| {
             tmp_file.write_all(&chunk.block)?;
             // Increment progress by the uncompressed size of the block,
             // not the "original" (compressed) size
             item.context.progress.increment(chunk.block.len() as u64);
-        }
+            Ok(())
+        })?;
 
         copy_metadata(&item.file, tmp_file.as_file())?;
         set_flags(

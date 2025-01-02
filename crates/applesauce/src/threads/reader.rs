@@ -1,5 +1,4 @@
 use crate::seq_queue::Slot;
-use crate::threads::writer::Chunk;
 use crate::threads::{compressing, writer, BgWork, Context, Mode, WorkHandler};
 use crate::{rfork_storage, seq_queue, try_read_all};
 use applesauce_core::BLOCK_SIZE;
@@ -42,54 +41,12 @@ impl Handler {
         Self { compressor, writer }
     }
 
-    fn try_handle(&mut self, item: WorkItem) -> io::Result<()> {
-        let WorkItem { context } = item;
-        let _guard = tracing::info_span!("reading file", path=%context.path.display()).entered();
-        let file = Arc::new(File::open(&context.path)?);
-
-        let file_size = context.orig_metadata.len();
-        let (tx, rx) = seq_queue::bounded(
-            thread::available_parallelism()
-                .map(NonZeroUsize::get)
-                .unwrap_or(4),
-        );
-
-        {
-            let _enter = tracing::debug_span!("waiting for space in writer").entered();
-            self.writer
-                .send(writer::WorkItem {
-                    context: Arc::clone(&context),
-                    file: Arc::clone(&file),
-                    blocks: rx,
-                })
-                .unwrap();
-        }
-
-        if let Err(e) = self.read_file_into(&context, &file, file_size, &tx) {
-            context
-                .progress
-                .error(&format!("Error reading {}: {}", context.path.display(), e));
-            // If we can't get a slot, the writer already had an error, so we can just return.
-            if let Some(slot) = tx.prepare_send() {
-                // Likewise, if we get a slot, but the channel closes, the writer must have seen an error
-                let _ = slot.finish(Err(io::Error::new(io::ErrorKind::Other, "Error in reader")));
-            }
-            return Err(e);
-        }
-        // Ensure the file Arc is dropped before finishing sending on the channel,
-        // so the writer can have the only remaining reference, and take ownership of the file.
-        drop(file);
-        drop(tx);
-
-        Ok(())
-    }
-
     fn read_file_into(
         &mut self,
         context: &Arc<Context>,
         file: &File,
         expected_len: u64,
-        tx: &seq_queue::Sender<io::Result<writer::Chunk>>,
+        tx: &seq_queue::Sender<writer::Chunk, io::Error>,
     ) -> io::Result<()> {
         match context.operation.mode {
             Mode::Compress { kind, .. } => {
@@ -132,10 +89,10 @@ impl Handler {
             Mode::DecompressByReading => {
                 self.with_file_chunks(file, expected_len, tx, |slot, data| {
                     let orig_size = data.len() as u64;
-                    let res = slot.finish(Ok(Chunk {
+                    let res = slot.finish(writer::Chunk {
                         block: data,
                         orig_size,
-                    }));
+                    });
                     if let Err(e) = res {
                         // This should only happen if the writer had an error
                         tracing::debug!("error finishing chunk: {e}");
@@ -153,8 +110,8 @@ impl Handler {
         &mut self,
         file: &File,
         expected_len: u64,
-        tx: &seq_queue::Sender<io::Result<writer::Chunk>>,
-        mut f: impl FnMut(Slot<io::Result<writer::Chunk>>, Vec<u8>) -> io::Result<()>,
+        tx: &seq_queue::Sender<writer::Chunk, io::Error>,
+        mut f: impl FnMut(Slot<writer::Chunk, io::Error>, Vec<u8>) -> io::Result<()>,
     ) -> io::Result<bool> {
         let mut total_read = 0;
         let block_span = tracing::debug_span!("reading blocks");
@@ -218,8 +175,45 @@ impl Handler {
 
 impl WorkHandler<WorkItem> for Handler {
     fn handle_item(&mut self, item: WorkItem) {
-        if let Err(e) = self.try_handle(item) {
-            tracing::error!("unable to compress file: {}", e);
+        let WorkItem { context } = item;
+        let _guard = tracing::info_span!("reading file", path=%context.path.display()).entered();
+        let file = match File::open(&context.path) {
+            Ok(file) => file,
+            Err(e) => {
+                context
+                    .progress
+                    .error(&format!("Error opening {}: {}", context.path.display(), e));
+                return;
+            }
+        };
+        let file = Arc::new(file);
+
+        let file_size = context.orig_metadata.len();
+        let (tx, rx) = seq_queue::bounded(
+            thread::available_parallelism()
+                .map(NonZeroUsize::get)
+                .unwrap_or(4),
+        );
+
+        {
+            let _enter = tracing::debug_span!("waiting for space in writer").entered();
+            self.writer
+                .send(writer::WorkItem {
+                    context: Arc::clone(&context),
+                    file: Arc::clone(&file),
+                    blocks: rx,
+                })
+                .unwrap();
         }
+
+        let result = self.read_file_into(&context, &file, file_size, &tx);
+        // ensure the file is dropped before tx is finished
+        drop(file);
+        if let Err(e) = &result {
+            context
+                .progress
+                .error(&format!("Error reading {}: {}", context.path.display(), e));
+        }
+        tx.finish(result);
     }
 }
