@@ -52,11 +52,16 @@ impl ProgressBars {
             .unwrap(),
             _ => write!(w, "-").unwrap(),
         };
+        #[allow(unknown_lints)] // TODO: Remove this once this clippy check is on stable
+        #[allow(clippy::literal_string_with_formatting_args)]
         let total_style = ProgressStyle::with_template(
             "{prefix:>25.bold} {wide_bar:.green} {bytes:>11}/{total_bytes:<11} {smoothed_eta:6}",
         )
         .unwrap()
         .with_key("smoothed_eta", smoothed_eta);
+
+        #[allow(unknown_lints)] // TODO: Remove this once this clippy check is on stable
+        #[allow(clippy::literal_string_with_formatting_args)]
         let style = ProgressStyle::with_template(
             "{prefix:>25.dim} {wide_bar} {bytes:>11}/{total_bytes:<11} {smoothed_eta:6}",
         )
