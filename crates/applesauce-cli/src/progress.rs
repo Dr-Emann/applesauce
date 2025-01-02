@@ -34,6 +34,7 @@ pub struct ProgressBars {
 
 impl ProgressBars {
     pub fn finish(&self) {
+        let _ = self.bars.clear();
         self.total_bar.finish();
     }
 }
