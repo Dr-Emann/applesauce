@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.8](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.7...applesauce-cli-v0.5.8) - 2025-01-02
+
+### Fixed
+- Ensure cleaned up progress bar before outputting final stats (by @Dr-Emann) - #104
+
 ## [0.5.7](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.6...applesauce-cli-v0.5.7) - 2025-01-02
 
 ### Fixed
