@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.6.0...applesauce-v0.6.1) - 2025-01-02
+
+### Fixed
+- File writing is canceled for ANY errors (by @Dr-Emann) - #102
+
 ## [0.6.0](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.5.5...applesauce-v0.6.0) - 2025-01-02
 
 ### Fixed
