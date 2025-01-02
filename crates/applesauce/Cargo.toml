@@ -2,7 +2,7 @@
 name = "applesauce"
 description = "A tool for compressing files with apple file system compression"
 license = "GPL-3.0-or-later"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 keywords = ["compression", "afsc", "decmpfs"]
 categories = ["compression"]
