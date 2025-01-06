@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.6.1...applesauce-v0.6.2) - 2025-01-06
+
+### Fixed
+- Correctly include skipped files in the final statistics (by @Dr-Emann) - #107
+
 ## [0.6.1](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.6.0...applesauce-v0.6.1) - 2025-01-02
 
 ### Fixed
