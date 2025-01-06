@@ -1,6 +1,7 @@
 use crate::{cstr_from_bytes_until_null, vol_supports_compression_cap, xattr};
 use applesauce_core::{decmpfs, round_to_block_size};
 use std::ffi::{CStr, CString};
+use std::fmt;
 use std::fs::Metadata;
 use std::io;
 use std::mem::MaybeUninit;
@@ -44,6 +45,24 @@ pub enum IncompressibleReason {
     IoError(io::Error),
     FsNotSupported,
     HasRequiredXattr,
+}
+
+impl fmt::Display for IncompressibleReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IncompressibleReason::Empty => write!(f, "empty file"),
+            IncompressibleReason::TooLarge(size) => {
+                write!(f, "file too large to compress: {} bytes", size)
+            }
+            IncompressibleReason::IoError(e) => e.fmt(f),
+            IncompressibleReason::FsNotSupported => {
+                write!(f, "filesystem does not support compression")
+            }
+            IncompressibleReason::HasRequiredXattr => {
+                write!(f, "file has a required xattr for compression already")
+            }
+        }
+    }
 }
 
 pub enum FileCompressionState {

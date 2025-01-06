@@ -1,3 +1,4 @@
+use crate::info::IncompressibleReason;
 use std::path::Path;
 use std::{fmt, io};
 
@@ -12,6 +13,18 @@ pub enum SkipReason {
     ZfsFilesystem,
     HasRequiredXattr,
     FsNotSupported,
+}
+
+impl From<IncompressibleReason> for SkipReason {
+    fn from(reason: IncompressibleReason) -> SkipReason {
+        match reason {
+            IncompressibleReason::Empty => SkipReason::EmptyFile,
+            IncompressibleReason::TooLarge(size) => SkipReason::TooLarge(size),
+            IncompressibleReason::IoError(err) => SkipReason::ReadError(err),
+            IncompressibleReason::FsNotSupported => SkipReason::FsNotSupported,
+            IncompressibleReason::HasRequiredXattr => SkipReason::HasRequiredXattr,
+        }
+    }
 }
 
 pub trait Progress {
