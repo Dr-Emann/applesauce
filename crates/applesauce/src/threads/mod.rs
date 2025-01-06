@@ -1,4 +1,4 @@
-use crate::info::FileCompressionState;
+use crate::info::{FileCompressionState, IncompressibleReason};
 use crate::progress::{self, Progress, SkipReason};
 use crate::tmpdir_paths::TmpdirPaths;
 use crate::{info, scan, times, Stats};
@@ -178,41 +178,62 @@ impl BackgroundThreads {
                     return;
                 }
             };
-            let file_info = info::get_file_info(&path, &metadata);
+            let mut file_info = info::get_file_info(&path, &metadata);
             stats.add_start_file(&metadata, &file_info);
 
-            let send = match file_info.compression_state {
-                FileCompressionState::Compressed if !mode.is_compressing() => true,
-                FileCompressionState::Compressible if mode.is_compressing() => true,
-                FileCompressionState::Incompressible(_) => {
+            let skip_reason: Option<SkipReason> = match &mut file_info.compression_state {
+                FileCompressionState::Compressed => {
+                    if mode.is_compressing() {
+                        Some(SkipReason::AlreadyCompressed)
+                    } else {
+                        None
+                    }
+                }
+                FileCompressionState::Compressible => {
+                    if mode.is_compressing() {
+                        None
+                    } else {
+                        Some(SkipReason::NotCompressed)
+                    }
+                }
+                FileCompressionState::Incompressible(reason) => {
+                    if mode.is_compressing() {
+                        // We don't actually need the real reason, so we'll steal the reason here
+                        Some(SkipReason::from(mem::replace(
+                            reason,
+                            IncompressibleReason::Empty,
+                        )))
+                    } else {
+                        None
+                    }
+                }
+            };
+            if let Some(skip_reason) = skip_reason {
+                progress.file_skipped(&path, skip_reason);
+                stats.add_end_file(&metadata, &file_info);
+                return;
+            }
+            let saved_times = match times::save_times(path.as_path()) {
+                Ok(saved_times) => saved_times,
+                Err(e) => {
+                    progress.file_skipped(&path, SkipReason::ReadError(e));
+                    stats.add_end_file(&metadata, &file_info);
                     return;
                 }
-                _ => false,
             };
-            if send {
-                let saved_times = match times::save_times(path.as_path()) {
-                    Ok(saved_times) => saved_times,
-                    Err(e) => {
-                        progress.file_skipped(&path, SkipReason::ReadError(e));
-                        return;
-                    }
-                };
 
-                let inner_progress = Box::new(progress.file_task(&path, metadata.len()));
-                chan.send(reader::WorkItem {
-                    context: Arc::new(Context {
-                        operation: Arc::clone(&operation),
-                        path,
-                        progress: inner_progress,
-                        orig_metadata: metadata,
-                        parent_resetter: dir_reset,
-                        orig_times: saved_times,
-                    }),
-                })
-                .unwrap();
-            } else {
-                stats.add_end_file(&metadata, &file_info);
-            }
+            let inner_progress = Box::new(progress.file_task(&path, metadata.len()));
+            chan.send(reader::WorkItem {
+                context: Arc::new(Context {
+                    operation: Arc::clone(&operation),
+                    path,
+                    progress: inner_progress,
+                    orig_metadata: metadata,
+                    parent_resetter: dir_reset,
+                    orig_times: saved_times,
+                }),
+            })
+            .unwrap();
         });
         drop(operation);
 

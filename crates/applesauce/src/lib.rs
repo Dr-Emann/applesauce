@@ -7,6 +7,7 @@
 #![warn(clippy::debug_assert_with_mut_call)]
 #![warn(clippy::filetype_is_file)]
 #![warn(clippy::match_same_arms)]
+extern crate core;
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 compile_error!("applesauce only works on macos/ios");
