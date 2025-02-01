@@ -75,7 +75,7 @@ dependencies = [
 
 [[package]]
 name = "applesauce"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "applesauce-core",
  "crossbeam-channel",
@@ -92,7 +92,7 @@ dependencies = [
 
 [[package]]
 name = "applesauce-cli"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "applesauce",
  "cfg-if",
@@ -108,7 +108,7 @@ dependencies = [
 
 [[package]]
 name = "applesauce-core"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "criterion",
  "flate2",
