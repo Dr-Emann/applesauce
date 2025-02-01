@@ -103,7 +103,7 @@ macro_rules! round_trip_tests {
                     use rand::RngCore;
 
                     let mut data = vec![0; 1024 * 1024];
-                    rand::thread_rng().fill_bytes(&mut data);
+                    rand::rng().fill_bytes(&mut data);
 
                     round_trip(Compressor::$name().kind(), &data);
                 }
