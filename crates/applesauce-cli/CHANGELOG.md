@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.10](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.9...applesauce-cli-v0.5.10) - 2025-02-01
+
+### Fixed
+- Avoid re-fetching metadata for files which were not modified (by @Dr-Emann) - #114
+
 ## [0.5.9](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.8...applesauce-cli-v0.5.9) - 2025-01-06
 
 ### Fixed
