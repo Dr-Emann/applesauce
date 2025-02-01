@@ -1,4 +1,4 @@
-use crate::info::{FileCompressionState, IncompressibleReason};
+use crate::info::{FileCompressionState, FileInfo, IncompressibleReason};
 use crate::progress::{self, Progress, SkipReason};
 use crate::tmpdir_paths::TmpdirPaths;
 use crate::{info, scan, times, Stats};
@@ -6,6 +6,7 @@ use applesauce_core::compressor;
 use std::fs::Metadata;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::{fmt, mem};
@@ -81,16 +82,37 @@ pub struct Context {
     path: PathBuf,
     progress: Box<dyn progress::Task + Send + Sync>,
     orig_metadata: Metadata,
+    orig_compression_info: FileInfo,
     orig_times: times::Saved,
+    stats_reported: AtomicBool,
+}
+
+impl Context {
+    pub fn report_new_stats(&self) {
+        let Ok(metadata) = self.path.symlink_metadata() else {
+            return;
+        };
+        let already_reported = self
+            .stats_reported
+            .swap(true, std::sync::atomic::Ordering::Relaxed);
+        assert!(!already_reported, "stats already reported");
+
+        let file_info = info::get_file_info(&self.path, &metadata);
+        self.operation.stats.add_end_file(&metadata, &file_info);
+    }
 }
 
 impl Drop for Context {
     fn drop(&mut self) {
-        let Ok(metadata) = self.path.symlink_metadata() else {
+        if self
+            .stats_reported
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
             return;
-        };
-        let file_info = info::get_file_info(&self.path, &metadata);
-        self.operation.stats.add_end_file(&metadata, &file_info);
+        }
+        self.operation
+            .stats
+            .add_end_file(&self.orig_metadata, &self.orig_compression_info);
     }
 }
 
@@ -231,6 +253,8 @@ impl BackgroundThreads {
                     orig_metadata: metadata,
                     parent_resetter: dir_reset,
                     orig_times: saved_times,
+                    orig_compression_info: file_info,
+                    stats_reported: AtomicBool::new(false),
                 }),
             })
             .unwrap();

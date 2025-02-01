@@ -206,6 +206,7 @@ impl WorkHandler<WorkItem> for Handler {
         };
 
         if res.is_ok() {
+            context.report_new_stats();
             let compressing = context.operation.mode.is_compressing();
             let prefix = if compressing { "" } else { "de" };
             tracing::info!("Successfully {prefix}compressed {}", context.path.display());
