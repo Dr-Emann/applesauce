@@ -93,7 +93,7 @@ struct Compress {
     #[arg(
         short, long,
         default_value_t = 5,
-        value_parser = clap::value_parser!(u32).range(1..=9)
+        value_parser = clap::value_parser!(u32).range(1..=12)
     )]
     level: u32,
 
@@ -181,16 +181,7 @@ fn chrome_tracing_file(path: Option<&Path>) -> Option<impl io::Write> {
         }
     };
 
-    let writer = {
-        cfg_if! {
-            if #[cfg(feature = "zlib")] {
-                flate2::write::GzEncoder::new(file, flate2::Compression::default())
-            } else {
-                file
-            }
-        }
-    };
-    Some(BufWriter::new(writer))
+    Some(BufWriter::new(file))
 }
 
 fn main() {

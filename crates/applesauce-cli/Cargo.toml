@@ -15,7 +15,7 @@ path = "src/main.rs"
 [features]
 default = ["zlib", "lzfse", "lzvn"]
 
-zlib = ["applesauce/zlib", "dep:flate2"]
+zlib = ["applesauce/zlib"]
 lzfse = ["applesauce/lzfse"]
 lzvn = ["applesauce/lzvn"]
 
@@ -30,5 +30,3 @@ tikv-jemallocator = "0.6"
 tracing = "0.1"
 tracing-chrome = "0.7"
 tracing-subscriber = { version = "0.3.18", features = ["fmt", "env-filter"] }
-
-flate2 = { version = "1.0", optional = true, features = ["zlib-ng"], default-features = false }

@@ -1,11 +1,23 @@
 use crate::decmpfs::{BlockInfo, ZLIB_BLOCK_TABLE_START, ZLIB_TRAILER};
-use crate::try_read_all;
-use flate2::bufread::{ZlibDecoder, ZlibEncoder};
-use flate2::Compression;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::{io, mem};
 
-pub struct Zlib;
+pub struct Zlib {
+    compressor_level: u32,
+    compressor: libdeflater::Compressor,
+    decompressor: libdeflater::Decompressor,
+}
+
+impl Zlib {
+    pub fn new() -> Self {
+        let lvl = libdeflater::CompressionLvl::new(12).unwrap();
+        Self {
+            compressor_level: 12,
+            compressor: libdeflater::Compressor::new(lvl),
+            decompressor: libdeflater::Decompressor::new(),
+        }
+    }
+}
 
 impl super::CompressorImpl for Zlib {
     fn header_size(block_count: u64) -> u64 {
@@ -19,16 +31,22 @@ impl super::CompressorImpl for Zlib {
     fn compress(&mut self, dst: &mut [u8], src: &[u8], level: u32) -> io::Result<usize> {
         assert!(dst.len() > src.len());
 
-        let encoder = ZlibEncoder::new(src, Compression::new(level));
-        let bytes_read = try_read_all(encoder, &mut dst[..src.len()])?;
-        if bytes_read == src.len() {
-            tracing::trace!("writing uncompressed data");
-            dst[0] = 0xff;
-            dst[1..][..src.len()].copy_from_slice(src);
-            return Ok(src.len() + 1);
+        if self.compressor_level != level {
+            self.compressor_level = level;
+            self.compressor =
+                libdeflater::Compressor::new(libdeflater::CompressionLvl::new(level as _).unwrap());
         }
 
-        Ok(bytes_read)
+        let len = match self.compressor.zlib_compress(src, &mut dst[..src.len()]) {
+            Ok(len) => len,
+            Err(libdeflater::CompressionError::InsufficientSpace) => {
+                tracing::trace!("writing uncompressed data");
+                dst[0] = 0xff;
+                dst[1..][..src.len()].copy_from_slice(src);
+                src.len() + 1
+            }
+        };
+        Ok(len)
     }
 
     fn decompress(&mut self, dst: &mut [u8], src: &[u8]) -> io::Result<usize> {
@@ -43,13 +61,9 @@ impl super::CompressorImpl for Zlib {
             dst[..src.len()].copy_from_slice(src);
             return Ok(src.len());
         }
-        let decoder = ZlibDecoder::new(src);
-        let bytes_read = try_read_all(decoder, dst)?;
-        if bytes_read == dst.len() {
-            return Err(io::ErrorKind::WriteZero.into());
-        }
-
-        Ok(bytes_read)
+        self.decompressor
+            .zlib_decompress(src, dst)
+            .map_err(io::Error::other)
     }
 
     fn read_block_info<R: Read + Seek>(
@@ -201,7 +215,7 @@ mod tests {
 
     #[test]
     fn round_trip() {
-        let mut compressor = Zlib;
+        let mut compressor = Zlib::new();
         compressor_round_trip(&mut compressor);
     }
 
