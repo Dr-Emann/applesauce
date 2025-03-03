@@ -45,7 +45,7 @@ impl Compressor {
     #[cfg(feature = "zlib")]
     #[must_use]
     pub fn zlib() -> Self {
-        Self(Data::Zlib(Zlib))
+        Self(Data::Zlib(Zlib::new()))
     }
 
     #[cfg(feature = "lzfse")]
@@ -160,7 +160,7 @@ impl Kind {
     pub fn compressor(self) -> Option<Compressor> {
         let data = match self {
             #[cfg(feature = "zlib")]
-            Kind::Zlib => Data::Zlib(Zlib),
+            Kind::Zlib => Data::Zlib(Zlib::new()),
             #[cfg(feature = "lzfse")]
             Kind::Lzfse => Data::Lzfse(Lzfse::new()),
             #[cfg(feature = "lzvn")]
