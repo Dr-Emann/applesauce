@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/Dr-Emann/applesauce/compare/applesauce-core-v0.3.5...applesauce-core-v0.4.0) - 2025-03-05
+
+### Added
+- Enable zlib levels up to 12 (by @Dr-Emann) - #127
+
+### Other
+- Use io::Error::other where possible, fix nightly clippy warnings (by @Dr-Emann) - #127
+
 ## [0.3.3](https://github.com/Dr-Emann/applesauce/compare/applesauce-core-v0.3.2...applesauce-core-v0.3.3) - 2024-12-17
 
 ### Other

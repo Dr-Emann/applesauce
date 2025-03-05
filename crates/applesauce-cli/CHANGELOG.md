@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.12](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.11...applesauce-cli-v0.5.12) - 2025-03-05
+
+### Added
+- Enable zlib levels up to 12 (by @Dr-Emann) - #127
+
+### Other
+- Use io::Error::other where possible, fix nightly clippy warnings (by @Dr-Emann) - #127
+
 ## [0.5.10](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.9...applesauce-cli-v0.5.10) - 2025-02-01
 
 ### Fixed
