@@ -14,7 +14,7 @@ impl std::error::Error for UnknownError {}
 
 impl From<UnknownError> for io::Error {
     fn from(value: UnknownError) -> Self {
-        io::Error::new(io::ErrorKind::Other, value)
+        io::Error::other(value)
     }
 }
 

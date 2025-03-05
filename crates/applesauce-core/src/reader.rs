@@ -44,12 +44,7 @@ impl<R: Read + Seek> Reader<R> {
             .compression_type
             .compression_storage()
             .filter(|(kind, _)| kind.supported())
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    "unsupported compression kind or storage",
-                )
-            })?;
+            .ok_or_else(|| io::Error::other("unsupported compression kind or storage"))?;
         let state = match storage {
             Storage::Xattr => State::Xattr(Cursor::new(decmpfs_value.extra_data.to_vec())),
             Storage::ResourceFork => {

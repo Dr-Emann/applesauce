@@ -75,13 +75,10 @@ impl Handler {
             total_compressed_size += u64::try_from(chunk.block.len()).unwrap();
             if total_compressed_size > max_compressed_size {
                 context.progress.not_compressible_enough(&context.path);
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!(
-                        "did not compress to at least {}% of original size",
-                        minimum_compression_ratio * 100.0
-                    ),
-                ));
+                return Err(io::Error::other(format!(
+                    "did not compress to at least {}% of original size",
+                    minimum_compression_ratio * 100.0
+                )));
             }
 
             let Chunk { block, orig_size } = chunk;
@@ -141,13 +138,10 @@ impl Handler {
             new_file.rewind()?;
 
             ensure_identical_files(orig_file, new_file).map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!(
-                        "verification failed: {e}, {} unchanged",
-                        item.context.path.display()
-                    ),
-                )
+                io::Error::other(format!(
+                    "verification failed: {e}, {} unchanged",
+                    item.context.path.display()
+                ))
             })?;
         }
 

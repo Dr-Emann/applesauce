@@ -170,9 +170,9 @@ impl super::CompressorImpl for Zlib {
             };
             writer.write_all(&block_info.to_bytes())?;
 
-            current_offset = current_offset.checked_add(size).ok_or_else(|| {
-                io::Error::new(io::ErrorKind::Other, "offset too large for 32 bytes")
-            })?;
+            current_offset = current_offset
+                .checked_add(size)
+                .ok_or_else(|| io::Error::other("offset too large for 32 bytes"))?;
         }
 
         writer.flush()?;

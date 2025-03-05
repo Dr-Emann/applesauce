@@ -12,7 +12,7 @@ where
     F2: FnMut(&[u8]) -> io::Result<()>,
 {
     let decmpfs_data = xattr::read(file, decmpfs::XATTR_NAME)?
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "file is not compressed"))?;
+        .ok_or_else(|| io::Error::other("file is not compressed"))?;
     let mut reader =
         applesauce_core::reader::Reader::new(&decmpfs_data, || ResourceFork::new(file))?;
 
