@@ -237,13 +237,10 @@ pub fn get(path: &Path) -> io::Result<AfscFileInfo> {
         } else {
             let maybe_len = xattr::len(&path, xattr_name)?;
             let len = maybe_len.ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!(
-                        "file claimed to have xattr '{}', but it has no len",
-                        xattr_name.to_string_lossy()
-                    ),
-                )
+                io::Error::other(format!(
+                    "file claimed to have xattr '{}', but it has no len",
+                    xattr_name.to_string_lossy()
+                ))
             })?;
             let len = u64::try_from(len).unwrap();
 
@@ -272,8 +269,7 @@ pub fn get(path: &Path) -> io::Result<AfscFileInfo> {
 
 fn get_decmpfs_info(path: &CStr) -> io::Result<Result<DecmpfsInfo, decmpfs::DecodeError>> {
     let maybe_data = xattr::read(path, decmpfs::XATTR_NAME)?;
-    let data = maybe_data
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "cannot get decmpfs xattr"))?;
+    let data = maybe_data.ok_or_else(|| io::Error::other("cannot get decmpfs xattr"))?;
 
     Ok(decmpfs_info_from_bytes(&data))
 }

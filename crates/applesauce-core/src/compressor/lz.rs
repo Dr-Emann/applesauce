@@ -106,10 +106,7 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         reader.read_exact(&mut buf)?;
         let mut last_offset = u32::from_le_bytes(buf);
         if last_offset != blocks_start {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "unexpected first block offset",
-            ));
+            return Err(io::Error::other("unexpected first block offset"));
         }
 
         // LZ stores an offset before every block, and an extra for the end, we've
@@ -119,7 +116,7 @@ impl<I: Impl> CompressorImpl for Lz<I> {
             let next_offset = u32::from_le_bytes(buf);
             let compressed_size = next_offset
                 .checked_sub(last_offset)
-                .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "compressed block overlap"))?;
+                .ok_or_else(|| io::Error::other("compressed block overlap"))?;
             result.push(BlockInfo {
                 offset: last_offset,
                 compressed_size,
@@ -130,10 +127,7 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         // Check that the last offset is the end of the file
         let end_pos = reader.seek(SeekFrom::End(0))?;
         if end_pos != u64::from(last_offset) {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "last block does not end resource fork",
-            ));
+            return Err(io::Error::other("last block does not end resource fork"));
         }
 
         Ok(result)
@@ -148,12 +142,9 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         for &size in block_sizes {
             writer.write_all(&u32::to_le_bytes(offset))?;
 
-            offset = offset.checked_add(size).ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    "Unable to represent offset in 32 bits",
-                )
-            })?;
+            offset = offset
+                .checked_add(size)
+                .ok_or_else(|| io::Error::other("Unable to represent offset in 32 bits"))?;
         }
         // Write the final offset
         writer.write_all(&u32::to_le_bytes(offset))?;

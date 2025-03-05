@@ -69,9 +69,9 @@ impl Handler {
                     move |data| {
                         // TODO: This waits for a slot after we have already read.
                         // TODO: This should be able to exit early, without an error
-                        let slot = tx.prepare_send().ok_or_else(|| {
-                            io::Error::new(io::ErrorKind::Other, "error must have occurred writing")
-                        })?;
+                        let slot = tx
+                            .prepare_send()
+                            .ok_or_else(|| io::Error::other("error must have occurred writing"))?;
                         let _enter =
                             tracing::debug_span!("waiting to send to compressor").entered();
                         self.compressor
@@ -151,10 +151,7 @@ impl Handler {
                 }
                 total_read += u64::try_from(n).unwrap();
                 if total_read > expected_len {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        "file size changed while reading",
-                    ));
+                    return Err(io::Error::other("file size changed while reading"));
                 }
                 buf.truncate(n);
                 buf
@@ -164,10 +161,7 @@ impl Handler {
         }
         if total_read != expected_len {
             // The writer will be notified by returning an error
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "file size changed while reading",
-            ));
+            return Err(io::Error::other("file size changed while reading"));
         }
         Ok(true)
     }
