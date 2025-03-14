@@ -1,5 +1,6 @@
 use crate::times;
 use std::ffi::{c_void, CStr, CString};
+use std::fmt;
 use std::fs::File;
 use std::mem::MaybeUninit;
 use std::os::fd::AsRawFd;
@@ -8,7 +9,7 @@ use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::{io, mem, ptr};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone)]
 pub struct Saved {
     create_time: libc::timespec,
     mod_time: libc::timespec,
@@ -25,6 +26,18 @@ impl Saved {
             access_time: attr_buf.access_time,
             add_time: attr_buf.add_time,
         }
+    }
+}
+
+impl fmt::Debug for Saved {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let time_debug = |time: &libc::timespec| format!("@{}.{:09}", time.tv_sec, time.tv_nsec);
+        f.debug_struct("Saved")
+            .field("create_time", &time_debug(&self.create_time))
+            .field("mod_time", &time_debug(&self.mod_time))
+            .field("access_time", &time_debug(&self.access_time))
+            .field("add_time", &time_debug(&self.add_time))
+            .finish()
     }
 }
 
