@@ -69,7 +69,7 @@ dependencies = [
 
 [[package]]
 name = "applesauce"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "applesauce-core",
  "crossbeam-channel",
@@ -86,7 +86,7 @@ dependencies = [
 
 [[package]]
 name = "applesauce-cli"
-version = "0.5.13"
+version = "0.5.14"
 dependencies = [
  "applesauce",
  "cfg-if",
@@ -101,7 +101,7 @@ dependencies = [
 
 [[package]]
 name = "applesauce-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "criterion",
  "libc",
@@ -801,7 +801,7 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "resource-fork"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "criterion",
  "libc",
