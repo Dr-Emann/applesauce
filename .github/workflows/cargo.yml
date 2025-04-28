@@ -9,6 +9,7 @@ jobs:
       matrix:
         rust:
           - stable
+          - beta
           - nightly
 
     steps:
