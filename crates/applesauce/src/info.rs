@@ -52,7 +52,7 @@ impl fmt::Display for IncompressibleReason {
         match self {
             IncompressibleReason::Empty => write!(f, "empty file"),
             IncompressibleReason::TooLarge(size) => {
-                write!(f, "file too large to compress: {} bytes", size)
+                write!(f, "file too large to compress: {size} bytes")
             }
             IncompressibleReason::IoError(e) => e.fmt(f),
             IncompressibleReason::FsNotSupported => {

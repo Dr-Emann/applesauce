@@ -381,7 +381,7 @@ pub fn display_stats(stats: &Stats, compress_mode: bool) {
             compressed_count_start.saturating_sub(compressed_count_final),
         );
         if compressed_count_final != 0 {
-            println!(" ({} remaining compressed)", compressed_count_final);
+            println!(" ({compressed_count_final} remaining compressed)");
         } else {
             println!();
         }
