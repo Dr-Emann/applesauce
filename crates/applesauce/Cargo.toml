@@ -37,5 +37,5 @@ tracing = "0.1.40"
 jwalk = "0.8"
 
 [dev-dependencies]
-sha2 = "0.10.8"
+sha2 = "0.10.9"
 walkdir = "2.5.0"
