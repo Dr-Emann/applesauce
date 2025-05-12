@@ -31,11 +31,11 @@ crossbeam-channel = "0.5.15"
 libc = "0.2.172"
 memchr = "2.7"
 oneshot = "0.1.8"
-tempfile = "3.19.1"
+tempfile = "3.20.0"
 tracing = "0.1.40"
 
 jwalk = "0.8"
 
 [dev-dependencies]
-sha2 = "0.10.8"
+sha2 = "0.10.9"
 walkdir = "2.5.0"
