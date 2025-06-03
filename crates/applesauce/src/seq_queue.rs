@@ -181,9 +181,6 @@ impl<T, E> Receiver<T, E> {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct SendError;
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum RecvError {
     Finished,
     ItemRecvError,

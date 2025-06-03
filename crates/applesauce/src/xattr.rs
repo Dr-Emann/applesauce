@@ -17,6 +17,7 @@ pub trait XattrSource {
         size: usize,
         offset: u32,
     ) -> c_int;
+    #[allow(unused)]
     unsafe fn remove_xattr(&self, xattr_name: &CStr) -> c_int;
     unsafe fn list_xattr(&self, name_buf: *mut u8, size: usize) -> ssize_t;
 }
