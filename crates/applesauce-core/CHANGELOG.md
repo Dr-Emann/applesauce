@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2](https://github.com/Dr-Emann/applesauce/compare/applesauce-core-v0.4.1...applesauce-core-v0.4.2) - 2025-06-03
+
+### Other
+- *(deps)* Bump the minor-patches group across 1 directory with 5 updates (by @dependabot[bot]) - #145
+
 ## [0.4.1](https://github.com/Dr-Emann/applesauce/compare/applesauce-core-v0.4.0...applesauce-core-v0.4.1) - 2025-04-28
 
 ### Other
