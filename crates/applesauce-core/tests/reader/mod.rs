@@ -62,7 +62,9 @@ fn round_trip(kind: Kind, uncompressed_data: &[u8]) {
             .decompress(&mut clear_buf, &compressed_block)
             .unwrap();
         let expected_len = if reader.remaining_blocks() != 0
-            || uncompressed_data.len() % applesauce_core::BLOCK_SIZE == 0
+            || uncompressed_data
+                .len()
+                .is_multiple_of(applesauce_core::BLOCK_SIZE)
         {
             applesauce_core::BLOCK_SIZE
         } else {
