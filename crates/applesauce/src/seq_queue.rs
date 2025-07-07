@@ -273,11 +273,11 @@ mod tests {
 
         let sender_handle = std::thread::spawn(move || {
             let tx = tx;
-            for i in 0..1000 {
+            for i in 0..1000u32 {
                 let slot = tx.prepare_send().unwrap();
                 std::thread::spawn(move || {
                     // slow down some finishes
-                    if i % 3 == 0 {
+                    if i.is_multiple_of(3) {
                         std::thread::sleep(Duration::from_micros(10));
                     }
                     slot.finish(i).unwrap();
