@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.8](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.6.7...applesauce-v0.6.8) - 2025-07-08
+
+### Other
+- Fix clippy warnings on nightly (by @Dr-Emann) - #153
+- *(deps)* Bump libc in the minor-patches group (by @dependabot[bot]) - #151
+- *(deps)* Bump the minor-patches group across 1 directory with 4 updates (by @dependabot[bot]) - #150
+- Fix clippy warnings on nightly (by @Dr-Emann) - #148
+- *(deps)* Bump the minor-patches group across 1 directory with 5 updates (by @dependabot[bot]) - #145
+
 ## [0.6.7](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.6.6...applesauce-v0.6.7) - 2025-04-28
 
 ### Other
