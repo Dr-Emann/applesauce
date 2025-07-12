@@ -151,7 +151,8 @@ impl Progress for ProgressBars {
             | SkipReason::ReadError(_)
             | SkipReason::ZfsFilesystem
             | SkipReason::HasRequiredXattr
-            | SkipReason::FsNotSupported => Verbosity::Normal,
+            | SkipReason::FsNotSupported
+            | SkipReason::HardLink => Verbosity::Normal,
         };
         if self.verbosity >= required_verbosity {
             self.total_bar

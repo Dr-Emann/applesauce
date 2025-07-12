@@ -5,6 +5,7 @@ use crate::{info, scan, times, Stats};
 use applesauce_core::compressor;
 use std::fs::Metadata;
 use std::num::NonZeroUsize;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -200,6 +201,12 @@ impl BackgroundThreads {
                     return;
                 }
             };
+            let link_count = metadata.nlink();
+            if link_count > 1 {
+                // We don't want to break the hard link, so we skip it.
+                progress.file_skipped(&path, SkipReason::HardLink);
+                return;
+            }
             let mut file_info = info::get_file_info(&path, &metadata);
             stats.add_start_file(&metadata, &file_info);
 
