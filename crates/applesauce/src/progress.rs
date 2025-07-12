@@ -13,6 +13,7 @@ pub enum SkipReason {
     ZfsFilesystem,
     HasRequiredXattr,
     FsNotSupported,
+    HardLink,
 }
 
 impl From<IncompressibleReason> for SkipReason {
@@ -83,6 +84,7 @@ impl fmt::Display for SkipReason {
             SkipReason::HasRequiredXattr => write!(f, "Compression xattrs already present"),
             SkipReason::FsNotSupported => write!(f, "Filesystem does not support compression"),
             SkipReason::EmptyFile => write!(f, "Empty file"),
+            SkipReason::HardLink => write!(f, "Other hard links exist to file"),
         }
     }
 }

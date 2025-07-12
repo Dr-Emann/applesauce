@@ -272,9 +272,11 @@ fn try_read_all<R: Read>(mut r: R, buf: &mut [u8]) -> io::Result<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::progress::Task;
+    use crate::progress::{SkipReason, Task};
+    use std::collections::HashMap;
     use std::os::unix::fs::symlink;
     use std::path::PathBuf;
+    use std::sync::Mutex;
     use std::time::SystemTime;
     use std::{fs, iter};
     use tempfile::TempDir;
@@ -290,6 +292,28 @@ mod tests {
 
         fn error(&self, path: &Path, message: &str) {
             panic!("Expected no errors, got {message} for {path:?}");
+        }
+
+        fn file_task(&self, _path: &Path, _size: u64) -> Self::Task {
+            NoProgress
+        }
+    }
+
+    struct MockProgress {
+        skip_reasons: Mutex<HashMap<PathBuf, SkipReason>>,
+    }
+    impl Progress for MockProgress {
+        type Task = NoProgress;
+
+        fn error(&self, path: &Path, message: &str) {
+            panic!("Expected no errors, got {message} for {path:?}");
+        }
+
+        fn file_skipped(&self, path: &Path, why: SkipReason) {
+            self.skip_reasons
+                .lock()
+                .unwrap()
+                .insert(path.to_owned(), why);
         }
 
         fn file_task(&self, _path: &Path, _size: u64) -> Self::Task {
@@ -492,12 +516,25 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let orig_file = dir.path().join("test1.txt");
         fs::write(&orig_file, b"fooooooobaaaaar").unwrap();
-        fs::hard_link(&orig_file, dir.path().join("test2.txt")).unwrap();
+        let second_file = dir.path().join("test2.txt");
+        fs::hard_link(&orig_file, &second_file).unwrap();
+
+        let progress = MockProgress {
+            skip_reasons: Mutex::new(HashMap::new()),
+        };
 
         let orig_contents = recursive_read(dir.path());
         let mut fc = FileCompressor::new();
-        fc.recursive_compress([dir.path()], Kind::default(), 2.0, 2, &NoProgress, false);
+        fc.recursive_compress([dir.path()], Kind::default(), 2.0, 2, &progress, false);
         let next_contents = recursive_read(dir.path());
         assert_entries_equal(&orig_contents, &next_contents);
+
+        let skip_reasons = progress.skip_reasons.into_inner().unwrap();
+        assert_eq!(skip_reasons.len(), 2);
+        assert!(matches!(skip_reasons[&orig_file], SkipReason::HardLink));
+        assert!(matches!(skip_reasons[&second_file], SkipReason::HardLink));
+
+        assert!(!info::get(&orig_file).unwrap().is_compressed);
+        assert!(!info::get(&second_file).unwrap().is_compressed);
     }
 }
