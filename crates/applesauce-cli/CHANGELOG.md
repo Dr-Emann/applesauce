@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.17](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.16...applesauce-cli-v0.5.17) - 2025-07-12
+
+### Added
+- Refuse to break hard links (by @Dr-Emann) - #158
+- Make make creating lz compressors a little cheaper (by @Dr-Emann) - #156
+
 ## [0.5.16](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.15...applesauce-cli-v0.5.16) - 2025-07-10
 
 ### Other
