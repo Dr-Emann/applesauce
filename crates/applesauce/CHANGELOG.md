@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.7.0...applesauce-v0.7.1) - 2025-08-02
+
+### Other
+- Updated the following local packages: applesauce-core, resource-fork
+
 ## [0.7.0](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.6.8...applesauce-v0.7.0) - 2025-07-12
 
 ### Added
