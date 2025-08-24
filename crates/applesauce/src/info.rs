@@ -1,15 +1,15 @@
-use crate::{cstr_from_bytes_until_null, vol_supports_compression_cap, xattr};
 use applesauce_core::{decmpfs, round_to_block_size};
 use std::ffi::{CStr, CString};
 use std::fmt;
 use std::fs::Metadata;
 use std::io;
-use std::mem::MaybeUninit;
 use std::os::macos::fs::MetadataExt as _;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt as _;
 use std::path::Path;
 
+use crate::volumes::Volumes;
+use crate::xattr;
 pub use applesauce_core::decmpfs::CompressionType;
 
 pub struct DecmpfsInfo {
@@ -125,10 +125,8 @@ pub fn get_recursive(path: &Path) -> io::Result<AfscFolderInfo> {
     Ok(result)
 }
 
-const ZFS_SUBTYPE: u32 = u32::from_be_bytes(*b"ZFS\0");
-
-pub fn get_file_info(path: &Path, metadata: &Metadata) -> FileInfo {
-    let compression_info = get_compression_state(path, metadata);
+pub fn get_file_info(path: &Path, metadata: &Metadata, volumes: &Volumes) -> FileInfo {
+    let compression_info = get_compression_state(path, metadata, volumes);
     let on_disk_size = round_to_block_size(metadata.blocks() * 512, metadata.st_blksize());
     FileInfo {
         on_disk_size,
@@ -137,7 +135,11 @@ pub fn get_file_info(path: &Path, metadata: &Metadata) -> FileInfo {
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
-pub fn get_compression_state(path: &Path, metadata: &Metadata) -> FileCompressionState {
+pub fn get_compression_state(
+    path: &Path,
+    metadata: &Metadata,
+    volumes: &Volumes,
+) -> FileCompressionState {
     if metadata.st_flags() & libc::UF_COMPRESSED != 0 {
         return FileCompressionState::Compressed;
     }
@@ -151,6 +153,14 @@ pub fn get_compression_state(path: &Path, metadata: &Metadata) -> FileCompressio
         ));
     }
 
+    match volumes.supports_compression(path, metadata) {
+        Ok(true) => {}
+        Ok(false) => {
+            return FileCompressionState::Incompressible(IncompressibleReason::FsNotSupported)
+        }
+        Err(e) => return FileCompressionState::Incompressible(IncompressibleReason::IoError(e)),
+    };
+
     // TODO: Try a local buffer for non-alloc fast path
     let path = match CString::new(path.as_os_str().as_bytes()) {
         Ok(path) => path,
@@ -158,25 +168,6 @@ pub fn get_compression_state(path: &Path, metadata: &Metadata) -> FileCompressio
             return FileCompressionState::Incompressible(IncompressibleReason::IoError(e.into()))
         }
     };
-    let mut statfs_buf = MaybeUninit::<libc::statfs>::uninit();
-    // SAFETY: path is a valid pointer, and null terminated, statfs_buf is a valid ptr, and is used as an out ptr
-    let rc = unsafe { libc::statfs(path.as_ptr(), statfs_buf.as_mut_ptr()) };
-    if rc != 0 {
-        return FileCompressionState::Incompressible(IncompressibleReason::IoError(
-            io::Error::last_os_error(),
-        ));
-    }
-    // SAFETY: if statfs returned non-zero, we returned already, it should have filled in statfs_buf
-    let statfs_buf = unsafe { statfs_buf.assume_init_ref() };
-    // TODO: let is_apfs = statfs_buf.f_fstypename.starts_with(APFS_CHARS);
-    let is_zfs = statfs_buf.f_fssubtype == ZFS_SUBTYPE;
-    if is_zfs {
-        // ZFS doesn't do HFS/decmpfs compression. It may pretend to, but in
-        // that case it will *de*compress the data before committing it. We
-        // won't play that game, wasting cycles and rewriting data for nothing.
-        return FileCompressionState::Incompressible(IncompressibleReason::FsNotSupported);
-    }
-
     match xattr::is_present(&path, resource_fork::XATTR_NAME) {
         Ok(true) => {
             return FileCompressionState::Incompressible(IncompressibleReason::HasRequiredXattr);
@@ -195,24 +186,6 @@ pub fn get_compression_state(path: &Path, metadata: &Metadata) -> FileCompressio
             return FileCompressionState::Incompressible(IncompressibleReason::IoError(e));
         }
     };
-
-    let root_path = match cstr_from_bytes_until_null(&statfs_buf.f_mntonname) {
-        Some(root_path) => root_path,
-        None => {
-            return FileCompressionState::Incompressible(IncompressibleReason::IoError(
-                io::Error::new(io::ErrorKind::InvalidInput, "mount name invalid"),
-            ));
-        }
-    };
-    match vol_supports_compression_cap(root_path) {
-        Ok(true) => {}
-        Ok(false) => {
-            return FileCompressionState::Incompressible(IncompressibleReason::FsNotSupported);
-        }
-        Err(e) => {
-            return FileCompressionState::Incompressible(IncompressibleReason::IoError(e));
-        }
-    }
 
     FileCompressionState::Compressible
 }

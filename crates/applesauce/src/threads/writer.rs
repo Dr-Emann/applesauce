@@ -212,7 +212,7 @@ impl WorkHandler<WorkItem> for Handler {
 fn tmp_file_for(item: &WorkItem) -> io::Result<NamedTempFile> {
     item.context
         .operation
-        .tempdirs
+        .volumes
         .tempfile_for(&item.context.path, &item.context.orig_metadata)
 }
 

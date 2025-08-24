@@ -21,7 +21,7 @@ mod scan;
 mod seq_queue;
 mod threads;
 mod times;
-mod tmpdir_paths;
+mod volumes;
 mod xattr;
 
 use libc::c_char;
@@ -273,6 +273,7 @@ fn try_read_all<R: Read>(mut r: R, buf: &mut [u8]) -> io::Result<usize> {
 mod tests {
     use super::*;
     use crate::progress::{SkipReason, Task};
+    use crate::volumes::Volumes;
     use std::collections::HashMap;
     use std::os::unix::fs::symlink;
     use std::path::PathBuf;
@@ -418,7 +419,8 @@ mod tests {
         assert!(matches!(
             info::get_file_info(
                 uncompressed_file.path(),
-                &uncompressed_file.as_file().metadata().unwrap()
+                &uncompressed_file.as_file().metadata().unwrap(),
+                &Volumes::new(),
             )
             .compression_state,
             info::FileCompressionState::Compressible,

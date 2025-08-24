@@ -1,14 +1,13 @@
 use crate::progress::Progress;
+use crate::threads::OperationContext;
 use crate::times;
-use crate::tmpdir_paths::TmpdirPaths;
-use std::collections::HashSet;
 use std::fs::FileType;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 fn walk_dir_over(
     path: &Path,
-    ignored_dirs: Arc<HashSet<PathBuf>>,
+    context: Arc<OperationContext>,
 ) -> jwalk::WalkDirGeneric<((), State)> {
     let walker = jwalk::WalkDirGeneric::new(path);
     walker.process_read_dir(
@@ -21,7 +20,7 @@ fn walk_dir_over(
             // Also, add the client state to the entry.
             entries.retain_mut(|entry| {
                 if let Ok(entry) = entry {
-                    if entry.file_type().is_dir() && ignored_dirs.contains(entry.path().as_path()) {
+                    if entry.file_type().is_dir() && context.is_temp_dir(&entry.path()) {
                         return false;
                     }
                     #[allow(clippy::filetype_is_file)]
@@ -65,13 +64,11 @@ impl<'a, P: Progress + Send + Sync> Walker<'a, P> {
 
     pub fn run(
         self,
-        tmpdirs: &TmpdirPaths,
+        context: &Arc<OperationContext>,
         f: impl Fn(FileType, PathBuf, Option<Arc<times::Resetter>>) + Send + Sync,
     ) {
-        let ignored_dirs: Arc<HashSet<PathBuf>> =
-            Arc::new(tmpdirs.paths().map(PathBuf::from).collect());
         for path in self.paths {
-            let walker = walk_dir_over(path, Arc::clone(&ignored_dirs));
+            let walker = walk_dir_over(path, Arc::clone(context));
             for entry in walker {
                 let mut entry = match entry {
                     Ok(entry) => entry,
