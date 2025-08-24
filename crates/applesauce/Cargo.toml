@@ -33,6 +33,7 @@ memchr = "2.7"
 oneshot = "0.1.8"
 tempfile = "3.21.0"
 tracing = "0.1.40"
+dashmap = "6.0.0"
 
 jwalk = "0.8"
 
