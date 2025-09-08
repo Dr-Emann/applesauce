@@ -29,4 +29,4 @@ indicatif = "0.18.0"
 tikv-jemallocator = "0.6"
 tracing = "0.1"
 tracing-chrome = "0.7"
-tracing-subscriber = { version = "0.3.18", features = ["fmt", "env-filter"] }
+tracing-subscriber = { version = "0.3.20", features = ["fmt", "env-filter"] }
