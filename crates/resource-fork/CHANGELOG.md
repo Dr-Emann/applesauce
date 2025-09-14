@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.6](https://github.com/Dr-Emann/applesauce/compare/resource-fork-v0.3.5...resource-fork-v0.3.6) - 2025-09-14
+
+### Other
+- *(deps)* Bump the minor-patches group across 1 directory with 4 updates (by @dependabot[bot]) - #167
+
 ## [0.3.5](https://github.com/Dr-Emann/applesauce/compare/resource-fork-v0.3.4...resource-fork-v0.3.5) - 2025-08-02
 
 ### Other
