@@ -59,7 +59,7 @@ struct AttrSetBuf {
     add_time: libc::timespec,
 }
 
-trait GetSet {
+pub trait GetSet {
     fn get_times(&self) -> io::Result<Saved>;
 
     fn reset_times(&self, saved: &Saved) -> io::Result<()>;

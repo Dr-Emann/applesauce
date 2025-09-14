@@ -153,6 +153,8 @@ impl From<Compression> for compressor::Kind {
     }
 }
 
+// Using cfg_if is much easier than using drive and specifying the default as an attribute on a derive
+#[allow(clippy::derivable_impls)]
 impl Default for Compression {
     fn default() -> Self {
         cfg_if! {
