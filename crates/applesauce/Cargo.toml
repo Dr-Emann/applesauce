@@ -28,10 +28,10 @@ resource-fork = { version = "^0.3.6", path = "../resource-fork" }
 applesauce-core = { version = "^0.4.5", path = "../applesauce-core" }
 
 crossbeam-channel = "0.5.15"
-libc = "0.2.175"
+libc = "0.2.176"
 memchr = "2.7"
 oneshot = "0.1.8"
-tempfile = "3.21.0"
+tempfile = "3.23.0"
 tracing = "0.1.40"
 
 jwalk = "0.8"
