@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.20](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.19...applesauce-cli-v0.5.20) - 2025-10-14
+
+### Added
+- Avoid refetching per-volume information for each file (by @Dr-Emann) - #179
+
+### Other
+- Update Cargo.lock dependencies
+
 ## [0.5.19](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.18...applesauce-cli-v0.5.19) - 2025-09-14
 
 ### Other
