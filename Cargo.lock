@@ -87,7 +87,7 @@ dependencies = [
 
 [[package]]
 name = "applesauce-cli"
-version = "0.5.20"
+version = "0.5.21"
 dependencies = [
  "applesauce",
  "cfg-if",
