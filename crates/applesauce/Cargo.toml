@@ -32,7 +32,7 @@ libc = "0.2.175"
 memchr = "2.7"
 oneshot = "0.1.8"
 tempfile = "3.21.0"
-tracing = "0.1.40"
+tracing = "0.1.43"
 dashmap = "6.0.0"
 
 jwalk = "0.8"
