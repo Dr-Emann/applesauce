@@ -5,6 +5,8 @@ use std::ptr::NonNull;
 
 pub enum Impl {}
 
+// SAFETY: We return a consistent value for scratch_size, and rely on the impl to return a correct
+//         value for the scratch size it will touch.
 unsafe impl lz::Impl for Impl {
     fn scratch_size() -> usize {
         // SAFETY: Both of these functions are always safe to call

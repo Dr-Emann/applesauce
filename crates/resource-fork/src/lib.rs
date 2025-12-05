@@ -1,3 +1,5 @@
+#![deny(unnameable_types, unreachable_pub)]
+
 use libc::XATTR_SHOWCOMPRESSION;
 use std::ffi::CStr;
 use std::fs::File;
@@ -196,7 +198,7 @@ mod tests {
         use std::ffi::CStr;
         use std::{io, ptr};
 
-        pub fn len(path: &CStr, xattr_name: &CStr) -> io::Result<Option<usize>> {
+        pub(super) fn len(path: &CStr, xattr_name: &CStr) -> io::Result<Option<usize>> {
             // SAFETY:
             // path/xattr_name are valid pointers and are null terminated
             // value == NULL, size == 0 is allowed to just return the size
@@ -221,7 +223,7 @@ mod tests {
             Ok(Some(rc as usize))
         }
 
-        pub fn is_present(path: &CStr, xattr_name: &CStr) -> io::Result<bool> {
+        pub(super) fn is_present(path: &CStr, xattr_name: &CStr) -> io::Result<bool> {
             len(path, xattr_name).map(|len| len.is_some())
         }
     }

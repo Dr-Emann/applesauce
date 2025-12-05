@@ -1,6 +1,6 @@
 use crate::decmpfs::{BlockInfo, ZLIB_BLOCK_TABLE_START, ZLIB_TRAILER};
+use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::{io, mem};
 
 pub struct Zlib {
     compressor_level: u32,
@@ -21,7 +21,7 @@ impl Zlib {
 
 impl super::CompressorImpl for Zlib {
     fn header_size(block_count: u64) -> u64 {
-        ZLIB_BLOCK_TABLE_START + mem::size_of::<u32>() as u64 + block_count * BlockInfo::SIZE as u64
+        ZLIB_BLOCK_TABLE_START + size_of::<u32>() as u64 + block_count * BlockInfo::SIZE as u64
     }
 
     fn trailer_size() -> u64 {
@@ -99,7 +99,7 @@ impl super::CompressorImpl for Zlib {
             ));
         }
 
-        let mut buf = [0; mem::size_of::<u32>()];
+        let mut buf = [0; size_of::<u32>()];
         reader.read_exact(&mut buf)?;
         if buf != u32::to_be_bytes(data_end - 0x104) {
             return Err(io::Error::new(
@@ -138,7 +138,7 @@ impl super::CompressorImpl for Zlib {
         Ok(result)
     }
 
-    fn finish<W: io::Write + io::Seek>(mut writer: W, block_sizes: &[u32]) -> io::Result<()> {
+    fn finish<W: Write + Seek>(mut writer: W, block_sizes: &[u32]) -> io::Result<()> {
         let block_count =
             u32::try_from(block_sizes.len()).map_err(|_| io::ErrorKind::InvalidInput)?;
         let data_end =
@@ -189,7 +189,7 @@ impl super::CompressorImpl for Zlib {
     }
 }
 
-const HEADER_LEN: usize = 4 * mem::size_of::<u32>();
+const HEADER_LEN: usize = 4 * size_of::<u32>();
 fn header(data_end: u32) -> [u8; HEADER_LEN] {
     let mut result = [0; HEADER_LEN];
 
