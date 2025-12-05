@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.22](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.21...applesauce-cli-v0.5.22) - 2025-12-05
+
+### Other
+- Enable additional lints, and fix them (by @Dr-Emann) - #195
+- *(deps)* Bump the minor-patches group across 1 directory with 4 updates (by @dependabot[bot]) - #192
+- Build docs for MacOS only for docs.rs (by @Dr-Emann) - #194
+- Using a newer rust version means we can use cstr constants (by @Dr-Emann) - #196
+- Use lzfse_sys provided scratch size binding (by @Dr-Emann) - #195
+
 ## [0.5.21](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.20...applesauce-cli-v0.5.21) - 2025-11-09
 
 ### Other

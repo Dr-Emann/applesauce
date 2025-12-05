@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.8.1...applesauce-v0.8.2) - 2025-12-05
+
+### Other
+- Enable additional lints, and fix them (by @Dr-Emann) - #195
+- Build docs for MacOS only for docs.rs (by @Dr-Emann) - #194
+- *(deps)* Bump the minor-patches group across 1 directory with 4 updates (by @dependabot[bot]) - #192
+
 ## [0.8.1](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.8.0...applesauce-v0.8.1) - 2025-11-09
 
 ### Other
