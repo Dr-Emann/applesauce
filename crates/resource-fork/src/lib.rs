@@ -1,4 +1,8 @@
-#![deny(unnameable_types, unreachable_pub)]
+//! Utilities for accessing Resource Forks
+//!
+//! Resource Forks are an alternate data stream for files on MacOS
+
+#![deny(unnameable_types, unreachable_pub, missing_docs)]
 
 use libc::XATTR_SHOWCOMPRESSION;
 use std::ffi::CStr;
@@ -7,6 +11,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::io::AsRawFd;
 use std::{cmp, io, ptr};
 
+/// The Extended Attribute (xattr) name which holds the Resource Fork
 pub const XATTR_NAME: &CStr = {
     let bytes: &'static [u8] = b"com.apple.ResourceFork\0";
     // SAFETY: bytes are static, and null terminated, without internal nulls
