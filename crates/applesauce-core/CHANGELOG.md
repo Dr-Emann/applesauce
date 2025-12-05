@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.7](https://github.com/Dr-Emann/applesauce/compare/applesauce-core-v0.4.6...applesauce-core-v0.4.7) - 2025-12-05
+
+### Other
+- Using a newer rust version means we can use cstr constants (by @Dr-Emann) - #196
+- Use lzfse_sys provided scratch size binding (by @Dr-Emann) - #195
+- Enable additional lints, and fix them (by @Dr-Emann) - #195
+- *(deps)* Bump the minor-patches group across 1 directory with 4 updates (by @dependabot[bot]) - #192
+
 ## [0.4.6](https://github.com/Dr-Emann/applesauce/compare/applesauce-core-v0.4.5...applesauce-core-v0.4.6) - 2025-11-09
 
 ### Other

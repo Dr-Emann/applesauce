@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.7](https://github.com/Dr-Emann/applesauce/compare/resource-fork-v0.3.6...resource-fork-v0.3.7) - 2025-12-05
+
+### Other
+- Using a newer rust version means we can use cstr constants (by @Dr-Emann) - #196
+- Add more docs to resource-fork, and deny missing docs (by @Dr-Emann) - #196
+- Enable additional lints, and fix them (by @Dr-Emann) - #195
+- Build docs for MacOS only for docs.rs (by @Dr-Emann) - #194
+
 ## [0.3.6](https://github.com/Dr-Emann/applesauce/compare/resource-fork-v0.3.5...resource-fork-v0.3.6) - 2025-09-14
 
 ### Other
