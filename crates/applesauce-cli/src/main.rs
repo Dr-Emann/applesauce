@@ -1,6 +1,6 @@
 use crate::progress::{ProgressBarWriter, ProgressBars, Verbosity};
 use applesauce::compressor::Kind;
-use applesauce::{compressor, info, Stats};
+use applesauce::{info, Stats};
 use cfg_if::cfg_if;
 use clap::Parser;
 use std::ffi::OsStr;
@@ -140,15 +140,15 @@ enum Compression {
     Lzvn,
 }
 
-impl From<Compression> for compressor::Kind {
+impl From<Compression> for Kind {
     fn from(c: Compression) -> Self {
         match c {
             #[cfg(feature = "zlib")]
-            Compression::Zlib => compressor::Kind::Zlib,
+            Compression::Zlib => Kind::Zlib,
             #[cfg(feature = "lzfse")]
-            Compression::Lzfse => compressor::Kind::Lzfse,
+            Compression::Lzfse => Kind::Lzfse,
             #[cfg(feature = "lzvn")]
-            Compression::Lzvn => compressor::Kind::Lzvn,
+            Compression::Lzvn => Kind::Lzvn,
         }
     }
 }
@@ -204,7 +204,7 @@ fn main() {
     let progress_bars = ProgressBars::new(cli.verbosity());
     let fmt_writer = Mutex::new(LineWriter::new(ProgressBarWriter::new(
         progress_bars.multi_progress().clone(),
-        std::io::stderr(),
+        io::stderr(),
     )));
 
     let fmt_layer = tracing_subscriber::fmt::layer()

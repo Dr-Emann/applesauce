@@ -41,8 +41,8 @@ use crate::threads::{BackgroundThreads, Mode};
 use applesauce_core::compressor::Kind;
 
 const fn c_char_bytes(chars: &[c_char]) -> &[u8] {
-    assert!(mem::size_of::<c_char>() == mem::size_of::<u8>());
-    assert!(mem::align_of::<c_char>() == mem::align_of::<u8>());
+    assert!(size_of::<c_char>() == size_of::<u8>());
+    assert!(align_of::<c_char>() == align_of::<u8>());
     // SAFETY: c_char is the same layout as u8
     unsafe { mem::transmute(chars) }
 }
@@ -77,7 +77,7 @@ fn vol_supports_compression_cap(mnt_root: &CStr) -> io::Result<bool> {
             mnt_root.as_ptr(),
             ptr::addr_of_mut!(attrs).cast(),
             vol_attrs.as_mut_ptr().cast(),
-            mem::size_of_val(&vol_attrs),
+            size_of_val(&vol_attrs),
             0,
         )
     };
@@ -86,7 +86,7 @@ fn vol_supports_compression_cap(mnt_root: &CStr) -> io::Result<bool> {
     }
     // SAFETY: getattrlist returned success
     let vol_attrs = unsafe { vol_attrs.assume_init_ref() };
-    if vol_attrs.length != u32::try_from(mem::size_of::<VolAttrs>()).unwrap() {
+    if vol_attrs.length != u32::try_from(size_of::<VolAttrs>()).unwrap() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "getattrlist returned bad size",
@@ -395,7 +395,7 @@ mod tests {
         fs::write(big_file, big_content).unwrap();
     }
 
-    fn compress_folder(compressor_kind: compressor::Kind, dir: &Path) {
+    fn compress_folder(compressor_kind: Kind, dir: &Path) {
         let mut uncompressed_file = tempfile::NamedTempFile::new().unwrap();
         uncompressed_file.write_all(&[0; 8 * 1024]).unwrap();
         uncompressed_file.flush().unwrap();
@@ -423,7 +423,7 @@ mod tests {
                 &Volumes::new(),
             )
             .compression_state,
-            info::FileCompressionState::Compressible,
+            FileCompressionState::Compressible,
         ));
         assert!(dir.join("symlink").is_symlink());
 
@@ -496,21 +496,21 @@ mod tests {
     #[test]
     fn compress_zlib() {
         let dir = TempDir::new().unwrap();
-        compress_folder(compressor::Kind::Zlib, dir.path());
+        compress_folder(Kind::Zlib, dir.path());
     }
 
     #[cfg(feature = "lzvn")]
     #[test]
     fn compress_lzvn() {
         let dir = TempDir::new().unwrap();
-        compress_folder(compressor::Kind::Lzvn, dir.path());
+        compress_folder(Kind::Lzvn, dir.path());
     }
 
     #[cfg(feature = "lzfse")]
     #[test]
     fn compress_lzfse() {
         let dir = TempDir::new().unwrap();
-        compress_folder(compressor::Kind::Lzfse, dir.path());
+        compress_folder(Kind::Lzfse, dir.path());
     }
 
     #[test]

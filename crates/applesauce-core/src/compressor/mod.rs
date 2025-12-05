@@ -5,7 +5,6 @@ use self::lzvn::Lzvn;
 use self::lzfse::Lzfse;
 #[cfg(feature = "zlib")]
 use self::zlib::Zlib;
-use crate::decmpfs;
 use crate::decmpfs::BlockInfo;
 use std::{fmt, io};
 
@@ -34,7 +33,7 @@ pub(crate) trait CompressorImpl {
     fn read_block_info<R: io::Read + io::Seek>(
         reader: R,
         orig_file_size: u64,
-    ) -> io::Result<Vec<decmpfs::BlockInfo>>;
+    ) -> io::Result<Vec<BlockInfo>>;
 
     fn finish<W: io::Write + io::Seek>(writer: W, block_sizes: &[u32]) -> io::Result<()>;
 }

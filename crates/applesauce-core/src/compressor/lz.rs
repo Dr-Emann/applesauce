@@ -1,11 +1,10 @@
 use crate::compressor::CompressorImpl;
-use crate::decmpfs;
 use crate::decmpfs::BlockInfo;
 use std::alloc;
+use std::io;
 use std::io::SeekFrom;
 use std::marker::PhantomData;
 use std::ptr::NonNull;
-use std::{io, mem};
 
 macro_rules! cached_size {
     ($size:expr) => {{
@@ -45,7 +44,9 @@ pub struct Lz<I: Impl> {
     _impl: PhantomData<I>,
 }
 
+// SAFETY: No interior mutability
 unsafe impl<I: Impl> Send for Lz<I> {}
+// SAFETY: No interior mutability
 unsafe impl<I: Impl> Sync for Lz<I> {}
 
 impl<I: Impl> Lz<I> {
@@ -64,13 +65,15 @@ impl<I: Impl> Lz<I> {
 
     fn layout() -> alloc::Layout {
         // Ensure at least one byte: not allowed to allocate a zero sized layout
-        let size = I::scratch_size();
-        alloc::Layout::from_size_align(size, mem::align_of::<*mut u8>()).unwrap()
+        let size = I::scratch_size().max(1);
+        alloc::Layout::from_size_align(size, align_of::<*mut u8>()).unwrap()
     }
 }
 
 impl<I: Impl> Drop for Lz<I> {
     fn drop(&mut self) {
+        // SAFETY: `self.buf` was allocated with `alloc::alloc`, and `layout` must be constant
+        //         because the implementor promised to return a constant scratch size
         unsafe {
             alloc::dealloc(self.buf.as_ptr(), Self::layout());
         }
@@ -79,7 +82,7 @@ impl<I: Impl> Drop for Lz<I> {
 
 impl<I: Impl> CompressorImpl for Lz<I> {
     fn header_size(block_count: u64) -> u64 {
-        (block_count + 1) * mem::size_of::<u32>() as u64
+        (block_count + 1) * size_of::<u32>() as u64
     }
 
     fn compress(&mut self, dst: &mut [u8], src: &[u8], _level: u32) -> io::Result<usize> {
@@ -139,7 +142,7 @@ impl<I: Impl> CompressorImpl for Lz<I> {
     fn read_block_info<R: io::Read + io::Seek>(
         mut reader: R,
         orig_file_size: u64,
-    ) -> io::Result<Vec<decmpfs::BlockInfo>> {
+    ) -> io::Result<Vec<BlockInfo>> {
         reader.rewind()?;
         let block_count = crate::num_blocks(orig_file_size);
 
@@ -150,7 +153,7 @@ impl<I: Impl> CompressorImpl for Lz<I> {
                 .map_err(|_| io::ErrorKind::InvalidInput)?,
         );
 
-        let mut buf = [0; mem::size_of::<u32>()];
+        let mut buf = [0; size_of::<u32>()];
 
         reader.read_exact(&mut buf)?;
         let mut last_offset = u32::from_le_bytes(buf);
@@ -220,6 +223,7 @@ mod tests {
 
     struct FakeLzImpl;
 
+    // SAFETY: We don't uphold any guarantees because we just panic everywhere
     unsafe impl Impl for FakeLzImpl {
         fn scratch_size() -> usize {
             unimplemented!()

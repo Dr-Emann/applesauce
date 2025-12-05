@@ -1,14 +1,16 @@
 use crate::compressor::lz;
 use libc::c_int;
+use std::cmp;
 use std::ffi::c_void;
 use std::mem::MaybeUninit;
 use std::ptr::NonNull;
-use std::{cmp, mem};
 
 pub type Lzvn = lz::Lz<Impl>;
 
 pub enum Impl {}
 
+// SAFETY: We return a consistent value for scratch_size, and rely on the impl to return a correct
+//         value for the scratch size it will touch.
 unsafe impl lz::Impl for Impl {
     const UNCOMPRESSED_PREFIX: Option<u8> = Some(0x06);
 
@@ -16,10 +18,10 @@ unsafe impl lz::Impl for Impl {
         const {
             // lz implementation will align to a pointer, ensure that's enough for
             // the decoder state
-            assert!(mem::align_of::<DecoderState>() <= mem::align_of::<*mut u8>());
+            assert!(align_of::<DecoderState>() <= align_of::<*mut u8>());
         }
         lz::cached_size!(cmp::max(
-            mem::size_of::<DecoderState>(),
+            size_of::<DecoderState>(),
             // Safety: this function is always safe to call
             unsafe { lzvn_encode_scratch_size() },
         ))
@@ -42,7 +44,13 @@ unsafe impl lz::Impl for Impl {
 
     #[no_mangle]
     unsafe fn decode(dst: &mut [u8], src: &[u8], scratch: NonNull<u8>) -> usize {
-        let state = scratch.cast::<MaybeUninit<DecoderState>>().as_mut();
+        const _: () = {
+            assert!(align_of::<DecoderState>() <= align_of::<*mut u8>());
+        };
+        // SAFETY: caller will align `scratch` to a pointer, which we assert is enough above,
+        //         and it must be at least `scratch_size`, which we ensure is at least as large as
+        //         the size of `DecoderState`
+        let state = unsafe { scratch.cast::<MaybeUninit<DecoderState>>().as_mut() };
         let state: &mut DecoderState = state.write(DecoderState::default());
 
         let src_range = src.as_ptr_range();

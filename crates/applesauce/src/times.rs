@@ -1,4 +1,3 @@
-use crate::times;
 use std::ffi::{c_void, CStr, CString};
 use std::fmt;
 use std::fs::File;
@@ -19,7 +18,7 @@ pub struct Saved {
 
 impl Saved {
     fn from_attr_buf(attr_buf: &AttrGetBuf) -> Self {
-        assert_eq!(attr_buf.len as usize, mem::size_of_val(attr_buf));
+        assert_eq!(attr_buf.len as usize, size_of_val(attr_buf));
         Self {
             create_time: attr_buf.create_time,
             mod_time: attr_buf.mod_time,
@@ -100,7 +99,7 @@ impl GetSet for File {
                 self.as_raw_fd(),
                 ptr::addr_of_mut!(attrlist).cast::<c_void>(),
                 attr_buf.as_mut_ptr().cast::<c_void>(),
-                mem::size_of::<AttrGetBuf>(),
+                size_of::<AttrGetBuf>(),
                 libc::FSOPT_PACK_INVAL_ATTRS,
             );
             if rc != 0 {
@@ -127,7 +126,7 @@ impl GetSet for File {
                 self.as_raw_fd(),
                 ptr::addr_of_mut!(attrlist).cast::<c_void>(),
                 ptr::addr_of_mut!(attr_buf).cast::<c_void>(),
-                mem::size_of::<AttrSetBuf>(),
+                size_of::<AttrSetBuf>(),
                 0,
             );
             if rc != 0 {
@@ -151,7 +150,7 @@ impl GetSet for CStr {
                 self.as_ptr(),
                 ptr::addr_of_mut!(attrlist).cast::<c_void>(),
                 attr_buf.as_mut_ptr().cast::<c_void>(),
-                mem::size_of::<AttrGetBuf>(),
+                size_of::<AttrGetBuf>(),
                 libc::FSOPT_PACK_INVAL_ATTRS,
             );
             if rc != 0 {
@@ -178,7 +177,7 @@ impl GetSet for CStr {
                 self.as_ptr(),
                 ptr::addr_of_mut!(attrlist).cast::<c_void>(),
                 ptr::addr_of_mut!(attr_buf).cast::<c_void>(),
-                mem::size_of::<AttrSetBuf>(),
+                size_of::<AttrSetBuf>(),
                 0,
             );
             if rc != 0 {
@@ -204,13 +203,13 @@ impl GetSet for Path {
 
 #[tracing::instrument(level = "debug")]
 #[inline]
-pub fn save_times<F: GetSet + std::fmt::Debug + ?Sized>(f: &F) -> io::Result<Saved> {
+pub fn save_times<F: GetSet + fmt::Debug + ?Sized>(f: &F) -> io::Result<Saved> {
     f.get_times()
 }
 
 #[tracing::instrument(level = "debug")]
 #[inline]
-pub fn reset_times<F: GetSet + std::fmt::Debug + ?Sized>(f: &F, saved: &Saved) -> io::Result<()> {
+pub fn reset_times<F: GetSet + fmt::Debug + ?Sized>(f: &F, saved: &Saved) -> io::Result<()> {
     f.reset_times(saved)
 }
 
@@ -243,7 +242,7 @@ impl Resetter {
 impl Drop for Resetter {
     fn drop(&mut self) {
         if self.activated.load(std::sync::atomic::Ordering::Relaxed) {
-            let _ = times::reset_times(self.dir_path.as_c_str(), &self.saved_times);
+            let _ = reset_times(self.dir_path.as_c_str(), &self.saved_times);
         }
     }
 }

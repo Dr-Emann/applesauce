@@ -43,3 +43,6 @@ walkdir = "2.5.0"
 
 [package.metadata.docs.rs]
 targets = ["aarch64-apple-darwin"]
+
+[lints]
+workspace = true

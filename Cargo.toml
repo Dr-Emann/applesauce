@@ -10,3 +10,12 @@ lto = "fat"
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "warn"
