@@ -12,11 +12,7 @@ use std::os::unix::io::AsRawFd;
 use std::{cmp, io, ptr};
 
 /// The Extended Attribute (xattr) name which holds the Resource Fork
-pub const XATTR_NAME: &CStr = {
-    let bytes: &'static [u8] = b"com.apple.ResourceFork\0";
-    // SAFETY: bytes are static, and null terminated, without internal nulls
-    unsafe { CStr::from_bytes_with_nul_unchecked(bytes) }
-};
+pub const XATTR_NAME: &CStr = c"com.apple.ResourceFork";
 
 /// A Handle to a Resource Fork
 ///

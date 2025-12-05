@@ -17,11 +17,7 @@ pub const MAGIC: [u8; 4] = *b"fpmc";
 pub const ZLIB_BLOCK_TABLE_START: u64 = 0x104;
 
 /// The name of the decmpfs xattr
-pub const XATTR_NAME: &CStr = {
-    let bytes: &'static [u8] = b"com.apple.decmpfs\0";
-    // SAFETY: bytes are static, and null terminated, without internal nulls
-    unsafe { CStr::from_bytes_with_nul_unchecked(bytes) }
-};
+pub const XATTR_NAME: &CStr = c"com.apple.decmpfs";
 
 /// The location of the compressed data
 ///
