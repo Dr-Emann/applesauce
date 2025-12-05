@@ -1,5 +1,7 @@
 use crate::compressor::lz;
-use lzfse_sys::{lzfse_decode_buffer, lzfse_decode_scratch_size, lzfse_encode_buffer};
+use lzfse_sys::{
+    lzfse_decode_buffer, lzfse_decode_scratch_size, lzfse_encode_buffer, lzfse_encode_scratch_size,
+};
 use std::cmp;
 use std::ptr::NonNull;
 
@@ -44,8 +46,4 @@ unsafe impl lz::Impl for Impl {
         debug_assert!(res <= dst.len());
         res
     }
-}
-
-extern "C" {
-    fn lzfse_encode_scratch_size() -> usize;
 }
