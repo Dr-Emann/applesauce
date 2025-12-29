@@ -31,7 +31,7 @@ crossbeam-channel = "0.5.15"
 libc = "0.2.178"
 memchr = "2.7"
 oneshot = "0.1.8"
-tempfile = "3.21.0"
+tempfile = "3.24.0"
 tracing = "0.1.44"
 dashmap = "6.0.0"
 

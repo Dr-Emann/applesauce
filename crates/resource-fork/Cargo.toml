@@ -17,7 +17,7 @@ harness = false
 libc = "0.2"
 
 [dev-dependencies]
-tempfile = "3.21.0"
+tempfile = "3.24.0"
 criterion = { version = "0.8.1", features = ["html_reports"] }
 
 [lints]
