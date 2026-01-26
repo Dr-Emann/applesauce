@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.23](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.22...applesauce-cli-v0.5.23) - 2026-01-26
+
+### Other
+- Update Cargo.lock dependencies
+- *(deps)* Bump the minor-patches group across 1 directory with 3 updates (by @dependabot[bot]) - #207
+- *(deps)* Bump tempfile in the minor-patches group (by @dependabot[bot]) - #203
+- *(deps)* Bump the minor-patches group across 1 directory with 2 updates (by @dependabot[bot]) - #201
+- *(deps)* Bump criterion from 0.7.0 to 0.8.1 (by @dependabot[bot]) - #198
+
 ## [0.5.22](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.21...applesauce-cli-v0.5.22) - 2025-12-05
 
 ### Other

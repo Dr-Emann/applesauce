@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.8](https://github.com/Dr-Emann/applesauce/compare/resource-fork-v0.3.7...resource-fork-v0.3.8) - 2026-01-26
+
+### Other
+- *(deps)* Bump tempfile in the minor-patches group (by @dependabot[bot]) - #203
+- *(deps)* Bump criterion from 0.7.0 to 0.8.1 (by @dependabot[bot]) - #198
+
 ## [0.3.7](https://github.com/Dr-Emann/applesauce/compare/resource-fork-v0.3.6...resource-fork-v0.3.7) - 2025-12-05
 
 ### Other
