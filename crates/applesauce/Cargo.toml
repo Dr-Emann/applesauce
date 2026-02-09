@@ -29,8 +29,8 @@ applesauce-core = { version = "^0.4.8", path = "../applesauce-core" }
 
 crossbeam-channel = "0.5.15"
 libc = "0.2.180"
-memchr = "2.7"
-oneshot = "0.1.12"
+memchr = "2.8"
+oneshot = "0.1.13"
 tempfile = "3.24.0"
 tracing = "0.1.44"
 dashmap = "6.0.0"
