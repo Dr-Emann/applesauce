@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.24](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.23...applesauce-cli-v0.5.24) - 2026-02-16
+
+### Other
+- *(deps)* Bump the minor-patches group with 4 updates (by @dependabot[bot]) - #211
+- *(deps)* Bump the minor-patches group across 1 directory with 5 updates (by @dependabot[bot]) - #210
+
 ## [0.5.23](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.22...applesauce-cli-v0.5.23) - 2026-01-26
 
 ### Other
