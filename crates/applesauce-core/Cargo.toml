@@ -22,7 +22,7 @@ system-lzfse = ["lzfse"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-libc = "0.2.180"
+libc = "0.2.182"
 tracing = "0.1.44"
 libdeflater = { version = "1.25.2", optional = true }
 
