@@ -102,7 +102,7 @@ macro_rules! round_trip_tests {
 
                 #[test]
                 fn round_trip_large_rand() {
-                    use rand::RngCore;
+                    use rand::Rng;
 
                     let mut data = vec![0; 1024 * 1024];
                     rand::rng().fill_bytes(&mut data);
