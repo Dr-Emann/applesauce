@@ -1,6 +1,6 @@
 [package]
 name = "applesauce-core"
-version = "0.4.9"
+version = "0.4.10"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "A low level library interface for compressing and decompressing files using macos transparent compression"
