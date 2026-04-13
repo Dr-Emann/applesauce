@@ -84,7 +84,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "applesauce"
-version = "0.8.6"
+version = "0.8.7"
 dependencies = [
  "applesauce-core",
  "crossbeam-channel",
@@ -102,7 +102,7 @@ dependencies = [
 
 [[package]]
 name = "applesauce-cli"
-version = "0.5.26"
+version = "0.5.27"
 dependencies = [
  "applesauce",
  "cfg-if",
@@ -117,7 +117,7 @@ dependencies = [
 
 [[package]]
 name = "applesauce-core"
-version = "0.4.11"
+version = "0.4.12"
 dependencies = [
  "criterion",
  "libc",
