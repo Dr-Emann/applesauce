@@ -30,7 +30,7 @@ applesauce-core = { version = "^0.4.11", path = "../applesauce-core" }
 crossbeam-channel = "0.5.15"
 libc = "0.2.186"
 memchr = "2.8"
-oneshot = "0.1.13"
+oneshot = { version = "0.2.1", features = ["std"] }
 tempfile = "3.27.0"
 tracing = "0.1.44"
 dashmap = "6.0.0"
