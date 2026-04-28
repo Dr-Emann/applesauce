@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.7](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.8.6...applesauce-v0.8.7) - 2026-04-28
+
+### Other
+- *(deps)* Update oneshot library to 0.2 (by @Dr-Emann) - #232
+- *(deps)* Bump the minor-patches group with 2 updates (by @dependabot[bot]) - #231
+- *(deps)* Bump sha2 from 0.10.9 to 0.11.0 (by @dependabot[bot]) - #229
+- *(deps)* Bump the minor-patches group with 2 updates (by @dependabot[bot]) - #228
+
 ## [0.8.6](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.8.5...applesauce-v0.8.6) - 2026-04-06
 
 ### Other
