@@ -33,7 +33,7 @@ memchr = "2.8"
 oneshot = { version = "0.2.1", features = ["std"] }
 tempfile = "3.27.0"
 tracing = "0.1.44"
-dashmap = "6.0.0"
+dashmap = "6.2.1"
 
 jwalk = "0.8"
 
