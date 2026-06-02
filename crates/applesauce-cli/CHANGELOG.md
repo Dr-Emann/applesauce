@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.28](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.27...applesauce-cli-v0.5.28) - 2026-06-02
+
+### Other
+- *(deps)* Bump tikv-jemallocator from 0.6.1 to 0.7.0 (by @dependabot[bot]) - #237
+- *(deps)* Bump dashmap from 6.1.0 to 6.2.1 in the minor-patches group (by @dependabot[bot]) - #234
+
 ## [0.5.27](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.26...applesauce-cli-v0.5.27) - 2026-04-28
 
 ### Other
