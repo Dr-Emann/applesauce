@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.8](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.8.7...applesauce-v0.8.8) - 2026-06-02
+
+### Other
+- *(deps)* Bump dashmap from 6.1.0 to 6.2.1 in the minor-patches group (by @dependabot[bot]) - #234
+
 ## [0.8.7](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.8.6...applesauce-v0.8.7) - 2026-04-28
 
 ### Other
