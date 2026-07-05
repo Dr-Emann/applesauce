@@ -146,7 +146,12 @@ impl<I: Impl> CompressorImpl for Lz<I> {
         reader.rewind()?;
         let block_count = crate::num_blocks(orig_file_size);
 
-        let blocks_start = u32::try_from(Self::header_size(block_count)).unwrap();
+        let blocks_start = u32::try_from(Self::header_size(block_count)).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "uncompressed size implies too large a header for a resource fork",
+            )
+        })?;
         let mut result = Vec::with_capacity(
             block_count
                 .try_into()

@@ -70,7 +70,12 @@ impl super::CompressorImpl for Zlib {
         mut reader: R,
         orig_file_size: u64,
     ) -> io::Result<Vec<BlockInfo>> {
-        let block_count = u32::try_from(crate::num_blocks(orig_file_size)).unwrap();
+        let block_count = u32::try_from(crate::num_blocks(orig_file_size)).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "uncompressed size implies too many blocks for a resource fork",
+            )
+        })?;
 
         let total_size = u32::try_from(reader.seek(SeekFrom::End(0))?).map_err(|_| {
             io::Error::new(

@@ -19,6 +19,30 @@ fn invalid_magic() {
     assert_eq!(reader_err.kind(), std::io::ErrorKind::InvalidData);
 }
 
+// A decmpfs xattr can declare an arbitrary `uncompressed_size`, which is used to derive the
+// number of blocks / header size in the resource fork. An implausibly large value must produce a
+// graceful error rather than panicking when the derived value is narrowed to a u32.
+#[test]
+fn huge_uncompressed_size_in_rfork_errors() {
+    // (raw compression type, resource-fork storage)
+    // 4 = zlib, 8 = lzvn, 12 = lzfse
+    for raw_type in [4u32, 8, 12] {
+        let mut decmpfs_data = Vec::new();
+        decmpfs_data.extend_from_slice(&decmpfs::MAGIC);
+        decmpfs_data.extend_from_slice(&raw_type.to_le_bytes());
+        // 1 << 50 bytes => 2^34 blocks, which does not fit in a u32
+        decmpfs_data.extend_from_slice(&(1u64 << 50).to_le_bytes());
+
+        let err = Reader::new(&decmpfs_data, || Cursor::new(vec![0u8; 64]))
+            .expect_err("expected a graceful error for an implausible uncompressed size");
+        assert_eq!(
+            err.kind(),
+            std::io::ErrorKind::InvalidData,
+            "compression type {raw_type} should report invalid data",
+        );
+    }
+}
+
 fn round_trip(kind: Kind, uncompressed_data: &[u8]) {
     let mut compressor = kind.compressor().unwrap();
 
