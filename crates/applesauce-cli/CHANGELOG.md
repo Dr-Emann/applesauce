@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.29](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.28...applesauce-cli-v0.5.29) - 2026-09-20
+
+### Other
+- Update Cargo.lock dependencies
+- Make clippy happy, use as_chunks_mut rather than chunks_exact_mut (by @Dr-Emann) - #248
+
 ## [0.5.28](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.27...applesauce-cli-v0.5.28) - 2026-06-02
 
 ### Other
