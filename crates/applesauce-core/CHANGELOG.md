@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.13](https://github.com/Dr-Emann/applesauce/compare/applesauce-core-v0.4.12...applesauce-core-v0.4.13) - 2026-09-20
+
+### Other
+- Make clippy happy, use as_chunks_mut rather than chunks_exact_mut (by @Dr-Emann) - #248
+
 ## [0.4.12](https://github.com/Dr-Emann/applesauce/compare/applesauce-core-v0.4.11...applesauce-core-v0.4.12) - 2026-04-28
 
 ### Other
