@@ -69,16 +69,15 @@ impl Xorshift32 {
     }
 
     fn fill_bytes(&mut self, buf: &mut [u8]) {
-        let mut iter = buf.chunks_exact_mut(4);
-        for chunk in &mut iter {
+        let (chunks, rest) = buf.as_chunks_mut::<4>();
+        for chunk in chunks {
             let value = self.next();
-            chunk.copy_from_slice(&value.to_le_bytes());
+            *chunk = value.to_le_bytes();
         }
-        let remainder = iter.into_remainder();
-        if remainder.is_empty() {
+        if rest.is_empty() {
             return;
         }
-        remainder.copy_from_slice(&self.next().to_le_bytes()[..remainder.len()]);
+        rest.copy_from_slice(&self.next().to_le_bytes()[..rest.len()]);
     }
 }
 
