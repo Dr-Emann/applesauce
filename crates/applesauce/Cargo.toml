@@ -35,7 +35,7 @@ tempfile = "3.27.0"
 tracing = "0.1.44"
 dashmap = "6.2.1"
 
-jwalk = "0.8"
+jwalk = "0.9"
 
 [dev-dependencies]
 sha2 = "0.11.0"
