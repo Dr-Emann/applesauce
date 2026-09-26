@@ -162,13 +162,31 @@ impl Handler {
         let mut tmp_file = tmp_file_for(&item)?;
         copy_xattrs(&item.file, tmp_file.as_file())?;
 
+        let decmpfs_data = xattr::read(item.file.as_ref(), decmpfs::XATTR_NAME)?
+            .ok_or_else(|| io::Error::other("file is not compressed"))?;
+        let expected_size = decmpfs::Value::from_data(&decmpfs_data)?.uncompressed_size;
+        let mut written_size = 0u64;
+
         item.blocks.try_for_each(|chunk| {
+            written_size = written_size
+                .checked_add(chunk.block.len() as u64)
+                .ok_or(io::ErrorKind::InvalidData)?;
+            if written_size > expected_size {
+                return Err(io::ErrorKind::InvalidData.into());
+            }
             tmp_file.write_all(&chunk.block)?;
             // Increment progress by the uncompressed size of the block,
             // not the "original" (compressed) size
             item.context.progress.increment(chunk.block.len() as u64);
             Ok(())
         })?;
+
+        if written_size != expected_size {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "decompressed size does not match decmpfs metadata",
+            ));
+        }
 
         copy_metadata(&item.file, tmp_file.as_file())?;
         set_flags(
