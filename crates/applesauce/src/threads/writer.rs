@@ -70,6 +70,7 @@ impl Handler {
         };
         let max_compressed_size =
             (context.orig_metadata.len() as f64 * minimum_compression_ratio) as u64;
+        let mut first_block = true;
 
         chunks.try_for_each(|chunk| {
             total_compressed_size += u64::try_from(chunk.block.len()).unwrap();
@@ -82,6 +83,18 @@ impl Handler {
             }
 
             let Chunk { block, orig_size } = chunk;
+
+            if first_block {
+                first_block = false;
+                if (block.len() as f64) >= minimum_compression_ratio * (orig_size as f64) {
+                    context.progress.not_compressible_enough(&context.path);
+                    return Err(io::Error::other(format!(
+                        "already compressed ({}%)",
+                        (block.len() as f64 / orig_size as f64) * 100.0
+                    )));
+                }
+            }
+
             let _enter = block_span.enter();
 
             writer.add_block(&block)?;
