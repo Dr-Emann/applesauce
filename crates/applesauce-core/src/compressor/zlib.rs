@@ -78,7 +78,10 @@ impl super::CompressorImpl for Zlib {
                 "resource fork exceeds u32 range",
             )
         })?;
-        let data_end = total_size - u32::try_from(ZLIB_TRAILER.len()).unwrap();
+        let data_end = total_size
+            .checked_sub(u32::try_from(ZLIB_TRAILER.len()).unwrap())
+            .filter(|&end| end >= 0x108)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "resource fork too short"))?;
 
         reader.rewind()?;
         let mut header_buf = [0; HEADER_LEN];
@@ -121,7 +124,22 @@ impl super::CompressorImpl for Zlib {
         for _ in 0..block_count {
             reader.read_exact(&mut buf)?;
             let mut block_info = BlockInfo::from_bytes(buf);
-            block_info.offset += ZLIB_BLOCK_TABLE_START as u32;
+            block_info.offset = block_info
+                .offset
+                .checked_add(ZLIB_BLOCK_TABLE_START as u32)
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "block offset overflow")
+                })?;
+            let block_end = block_info
+                .offset
+                .checked_add(block_info.compressed_size)
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "block end overflow"))?;
+            if block_end > data_end {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "block extends past compressed data",
+                ));
+            }
             result.push(block_info);
         }
 
@@ -265,5 +283,23 @@ mod tests {
             })
             .collect();
         assert_eq!(block_info, expected_block_info);
+    }
+
+    #[test]
+    fn rejects_short_resource_fork() {
+        let mut cursor = Cursor::new(vec![0; ZLIB_TRAILER.len() - 1]);
+        assert!(Zlib::read_block_info(&mut cursor, 0).is_err());
+    }
+
+    #[test]
+    fn rejects_overflowing_block_offset() {
+        let mut cursor = Cursor::new(Vec::<u8>::new());
+        cursor.set_position(Zlib::header_size(1) + 1);
+        let _ = cursor.write(&[]).unwrap();
+        Zlib::finish(&mut cursor, &[1]).unwrap();
+        cursor.get_mut()[0x108..0x10c].copy_from_slice(&u32::MAX.to_le_bytes());
+        cursor.rewind().unwrap();
+
+        assert!(Zlib::read_block_info(&mut cursor, BLOCK_SIZE as u64).is_err());
     }
 }
