@@ -67,6 +67,10 @@ unsafe impl lz::Impl for Impl {
             lzvn_decode(state);
         }
 
+        if state.end_of_stream == 0 {
+            return 0;
+        }
+
         assert!(dst_range.contains(&state.dst));
         // SAFETY: lvzn_decode will have updated the dst ptr on state,
         //         but kept within range dst..dst_end
@@ -119,4 +123,18 @@ extern "C" {
 fn round_trip() {
     let mut compressor = Lzvn::new();
     super::tests::compressor_round_trip(&mut compressor);
+}
+
+#[test]
+fn rejects_missing_end_of_stream() {
+    use crate::compressor::CompressorImpl;
+
+    let mut compressor = Lzvn::new();
+    let input = vec![b'a'; 1024];
+    let mut compressed = vec![0; input.len() + 1];
+    let compressed_size = compressor.compress(&mut compressed, &input, 0).unwrap();
+    compressed.truncate(compressed_size - 1);
+
+    let mut output = vec![0; input.len() + 1];
+    assert!(compressor.decompress(&mut output, &compressed).is_err());
 }
