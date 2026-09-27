@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.30](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.29...applesauce-cli-v0.5.30) - 2026-09-27
+
+### Fixed
+- Validate manual decompression output size (by @Dr-Emann) - #255
+- Reject malformed zlib resource fork metadata (by @Dr-Emann) - #254
+- Reject incomplete LZVN streams (by @Dr-Emann) - #255
+
+### Other
+- Update Cargo.lock dependencies
+
 ## [0.5.29](https://github.com/Dr-Emann/applesauce/compare/applesauce-cli-v0.5.28...applesauce-cli-v0.5.29) - 2026-09-20
 
 ### Other

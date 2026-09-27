@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.10](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.8.9...applesauce-v0.8.10) - 2026-09-27
+
+### Fixed
+- Validate manual decompression output size (by @Dr-Emann) - #255
+
 ## [0.8.9](https://github.com/Dr-Emann/applesauce/compare/applesauce-v0.8.8...applesauce-v0.8.9) - 2026-09-20
 
 ### Other
