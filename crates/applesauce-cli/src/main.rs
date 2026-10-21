@@ -408,7 +408,7 @@ pub fn display_stats(stats: &Stats, compress_mode: bool) {
     );
     println!(
         "Savings:                        {:.1}%",
-        stats.compression_change_portion() * 100.0
+        stats.compression_savings() * 100.0
     );
 }
 
