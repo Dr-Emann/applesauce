@@ -9,7 +9,7 @@ fn walk_dir_over(
     path: &Path,
     context: Arc<OperationContext>,
 ) -> jwalk::WalkDirGeneric<((), State)> {
-    let walker = jwalk::WalkDirGeneric::new(path);
+    let walker = jwalk::WalkDirGeneric::new(path).skip_hidden(!context.include_hidden());
     walker.process_read_dir(
         move |_depth,
               path: &Path,

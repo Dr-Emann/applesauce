@@ -54,6 +54,7 @@ The options are as follows:
 - `decompress`: Decompresses the specified file/directory.
 - `info`: Prints information about the specified compressed file/directory, including the compression ratio and
   compression algorithm used.
+- `-H`, `--include-hidden`: Include hidden files and directories (names starting with `.`) when walking directories. Hidden entries are skipped by default; this applies to `compress`, `decompress`, and `info`.
 
 For example, to compress a file named `example.txt` using the ZLIB compression algorithm, you would run:
 

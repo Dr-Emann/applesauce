@@ -48,6 +48,7 @@ pub struct OperationContext {
     finished_stats: crossbeam_channel::Sender<Stats>,
     volumes: Volumes,
     verify: bool,
+    include_hidden: bool,
 }
 
 impl OperationContext {
@@ -56,6 +57,7 @@ impl OperationContext {
         finished_stats: crossbeam_channel::Sender<Stats>,
         volumes: Volumes,
         verify: bool,
+        include_hidden: bool,
     ) -> Self {
         Self {
             mode,
@@ -63,11 +65,16 @@ impl OperationContext {
             finished_stats,
             volumes,
             verify,
+            include_hidden,
         }
     }
 
     pub fn is_temp_dir(&self, path: &Path) -> bool {
         self.volumes.is_temp_dir(path)
+    }
+
+    pub fn include_hidden(&self) -> bool {
+        self.include_hidden
     }
 }
 
@@ -167,6 +174,7 @@ impl BackgroundThreads {
         paths: impl IntoIterator<Item = &'a Path>,
         progress: &P,
         verify: bool,
+        include_hidden: bool,
     ) -> Stats
     where
         P: Progress + Send + Sync,
@@ -187,7 +195,13 @@ impl BackgroundThreads {
             }
             walker.add_path(path);
         }
-        let operation = Arc::new(OperationContext::new(mode, finished_stats, volumes, verify));
+        let operation = Arc::new(OperationContext::new(
+            mode,
+            finished_stats,
+            volumes,
+            verify,
+            include_hidden,
+        ));
         let stats = &operation.stats;
         let chan = self.reader.chan();
 

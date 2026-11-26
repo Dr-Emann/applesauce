@@ -37,6 +37,12 @@ struct Cli {
 
     #[arg(short, long, global(true), action = clap::ArgAction::Count, conflicts_with = "verbose")]
     quiet: u8,
+
+    /// Include hidden files and directories (names starting with '.')
+    ///
+    /// This includes entries such as .git and .DS_Store, which are skipped by default.
+    #[arg(short = 'H', long, global(true))]
+    include_hidden: bool,
 }
 
 impl Cli {
@@ -221,6 +227,8 @@ fn main() {
         .with(fmt_layer)
         .init();
 
+    let include_hidden = cli.include_hidden;
+
     match cli.command {
         Commands::Compress(Compress {
             paths,
@@ -243,6 +251,7 @@ fn main() {
                 level,
                 &progress_bars,
                 verify,
+                include_hidden,
             );
             progress_bars.finish();
             drop(progress_bars);
@@ -264,6 +273,7 @@ fn main() {
                 manual,
                 &progress_bars,
                 verify,
+                include_hidden,
             );
             progress_bars.finish();
             tracing::info!("Finished decompressing");
@@ -274,7 +284,7 @@ fn main() {
         Commands::Info(info) => {
             for path in info.paths {
                 if path.is_dir() {
-                    let info = info::get_recursive(&path);
+                    let info = info::get_recursive(&path, include_hidden);
                     let info = match info {
                         Ok(info) => info,
                         Err(e) => {

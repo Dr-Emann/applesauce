@@ -101,9 +101,9 @@ impl AfscFolderInfo {
     }
 }
 
-pub fn get_recursive(path: &Path) -> io::Result<AfscFolderInfo> {
+pub fn get_recursive(path: &Path, include_hidden: bool) -> io::Result<AfscFolderInfo> {
     let mut result = AfscFolderInfo::default();
-    for entry in jwalk::WalkDir::new(path) {
+    for entry in jwalk::WalkDir::new(path).skip_hidden(!include_hidden) {
         let entry = entry?;
         let file_type = entry.file_type();
 
