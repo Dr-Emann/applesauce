@@ -513,3 +513,29 @@ fn command_check() {
     use clap::CommandFactory;
     Cli::command().debug_assert()
 }
+
+#[test]
+fn include_hidden_defaults_false() {
+    for args in [
+        vec!["applesauce", "compress", "x"],
+        vec!["applesauce", "decompress", "x"],
+        vec!["applesauce", "info", "x"],
+    ] {
+        let cli = Cli::try_parse_from(&args).unwrap();
+        assert!(!cli.include_hidden, "{args:?}");
+    }
+}
+
+#[test]
+fn include_hidden_accepted_before_and_after_subcommand() {
+    for flag in ["-H", "--include-hidden"] {
+        for sub in ["compress", "decompress", "info"] {
+            let before = vec!["applesauce", flag, sub, "x"];
+            let after = vec!["applesauce", sub, flag, "x"];
+            for args in [before, after] {
+                let cli = Cli::try_parse_from(&args).unwrap();
+                assert!(cli.include_hidden, "{args:?}");
+            }
+        }
+    }
+}
