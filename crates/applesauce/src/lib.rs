@@ -194,6 +194,7 @@ impl FileCompressor {
     }
 
     #[tracing::instrument(skip_all)]
+    #[allow(clippy::too_many_arguments)]
     pub fn recursive_compress<'a, P>(
         &mut self,
         paths: impl IntoIterator<Item = &'a Path>,
@@ -202,6 +203,7 @@ impl FileCompressor {
         level: u32,
         progress: &P,
         verify: bool,
+        include_hidden: bool,
     ) -> Stats
     where
         P: Progress + Send + Sync,
@@ -216,6 +218,7 @@ impl FileCompressor {
             paths,
             progress,
             verify,
+            include_hidden,
         )
     }
 
@@ -226,6 +229,7 @@ impl FileCompressor {
         manual: bool,
         progress: &P,
         verify: bool,
+        include_hidden: bool,
     ) -> Stats
     where
         P: Progress + Send + Sync,
@@ -236,7 +240,8 @@ impl FileCompressor {
         } else {
             Mode::DecompressByReading
         };
-        self.bg_threads.scan(mode, paths, progress, verify)
+        self.bg_threads
+            .scan(mode, paths, progress, verify, include_hidden)
     }
 }
 
@@ -405,13 +410,21 @@ mod tests {
         let old_contents = recursive_read(dir);
 
         let mut fc = FileCompressor::new();
-        fc.recursive_compress(iter::once(dir), compressor_kind, 1.0, 2, &NoProgress, true);
+        fc.recursive_compress(
+            iter::once(dir),
+            compressor_kind,
+            1.0,
+            2,
+            &NoProgress,
+            true,
+            false,
+        );
         std::thread::sleep(std::time::Duration::from_millis(10));
 
         let new_contents = recursive_read(dir);
         assert_entries_equal(&old_contents, &new_contents);
 
-        let info = info::get_recursive(dir).unwrap();
+        let info = info::get_recursive(dir, false).unwrap();
         // These are very compressible files
         assert!(info.compression_savings_fraction() > 0.5);
 
@@ -429,7 +442,7 @@ mod tests {
 
         // Now Decompress
         let mut fc = FileCompressor::new();
-        fc.recursive_decompress(iter::once(dir), true, &NoProgress, true);
+        fc.recursive_decompress(iter::once(dir), true, &NoProgress, true, false);
 
         let new_contents = recursive_read(dir);
         assert_entries_equal(&old_contents, &new_contents);
@@ -450,12 +463,13 @@ mod tests {
             2,
             &NoProgress,
             true,
+            false,
         );
 
         let new_contents = recursive_read(compressible_file.path());
         assert_entries_equal(&contents, &new_contents);
 
-        let info = info::get_recursive(compressible_file.path()).unwrap();
+        let info = info::get_recursive(compressible_file.path(), false).unwrap();
         // These are very compressible files
         assert!(info.compression_savings_fraction() > 0.5);
     }
@@ -482,12 +496,13 @@ mod tests {
             2,
             &NoProgress,
             false,
+            false,
         );
 
         let new_contents = recursive_read(outer_dir.path());
         assert_entries_equal(&contents, &new_contents);
 
-        let info = info::get_recursive(outer_dir.path()).unwrap();
+        let info = info::get_recursive(outer_dir.path(), false).unwrap();
         // These are very compressible files
         assert!(info.compression_savings_fraction() > 0.5);
     }
@@ -527,7 +542,15 @@ mod tests {
 
         let orig_contents = recursive_read(dir.path());
         let mut fc = FileCompressor::new();
-        fc.recursive_compress([dir.path()], Kind::default(), 2.0, 2, &progress, false);
+        fc.recursive_compress(
+            [dir.path()],
+            Kind::default(),
+            2.0,
+            2,
+            &progress,
+            false,
+            false,
+        );
         let next_contents = recursive_read(dir.path());
         assert_entries_equal(&orig_contents, &next_contents);
 
@@ -538,5 +561,92 @@ mod tests {
 
         assert!(!info::get(&orig_file).unwrap().is_compressed);
         assert!(!info::get(&second_file).unwrap().is_compressed);
+    }
+
+    /// Creates `visible.txt`, `.hidden_file`, `.hidden_dir/inner.txt` under `dir`.
+    fn populate_hidden_tree(dir: &Path) -> [PathBuf; 3] {
+        let visible = dir.join("visible.txt");
+        let hidden_file = dir.join(".hidden_file");
+        let hidden_dir = dir.join(".hidden_dir");
+        fs::create_dir(&hidden_dir).unwrap();
+        let inner = hidden_dir.join("inner.txt");
+        for p in [&visible, &hidden_file, &inner] {
+            fs::write(p, [0u8; 16 * 1024]).unwrap();
+        }
+        [visible, hidden_file, inner]
+    }
+
+    fn compressed_states(paths: &[PathBuf; 3]) -> [bool; 3] {
+        [0, 1, 2].map(|i| info::get(&paths[i]).unwrap().is_compressed)
+    }
+
+    #[test]
+    fn compress_include_hidden_matrix() {
+        for include_hidden in [false, true] {
+            for verify in [false, true] {
+                let dir = TempDir::new().unwrap();
+                let paths = populate_hidden_tree(dir.path());
+                let mut fc = FileCompressor::new();
+                fc.recursive_compress(
+                    [dir.path()],
+                    Kind::default(),
+                    2.0,
+                    2,
+                    &NoProgress,
+                    verify,
+                    include_hidden,
+                );
+                assert_eq!(
+                    compressed_states(&paths),
+                    [true, include_hidden, include_hidden],
+                    "include_hidden={include_hidden} verify={verify}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn info_get_recursive_include_hidden() {
+        let dir = TempDir::new().unwrap();
+        populate_hidden_tree(dir.path());
+        let hidden_off = info::get_recursive(dir.path(), false).unwrap();
+        let hidden_on = info::get_recursive(dir.path(), true).unwrap();
+        assert_eq!(hidden_off.num_files, 1);
+        assert_eq!(hidden_off.num_folders, 1); // the root counts as a folder
+        assert_eq!(hidden_on.num_files, 3);
+        assert_eq!(hidden_on.num_folders, 2); // root and .hidden_dir
+        assert_ne!(hidden_off.num_files, hidden_on.num_files);
+        assert_ne!(hidden_off.num_folders, hidden_on.num_folders);
+    }
+
+    #[test]
+    fn decompress_include_hidden_mirror() {
+        let dir = TempDir::new().unwrap();
+        let paths = populate_hidden_tree(dir.path());
+        let mut fc = FileCompressor::new();
+
+        // Compress everything, including hidden entries.
+        fc.recursive_compress(
+            [dir.path()],
+            Kind::default(),
+            2.0,
+            2,
+            &NoProgress,
+            false,
+            true,
+        );
+        assert_eq!(compressed_states(&paths), [true, true, true]);
+
+        // Decompress without the flag: visible restored, hidden entries stay compressed.
+        fc.recursive_decompress([dir.path()], true, &NoProgress, true, false);
+        assert_eq!(compressed_states(&paths), [false, true, true]);
+
+        // Decompress with the flag: hidden entries restored too.
+        fc.recursive_decompress([dir.path()], true, &NoProgress, true, true);
+        assert_eq!(compressed_states(&paths), [false, false, false]);
+
+        for p in &paths {
+            assert_eq!(fs::read(p).unwrap(), vec![0u8; 16 * 1024]);
+        }
     }
 }
